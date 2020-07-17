@@ -1,0 +1,38 @@
+Package: rmsb
+Title: Regression Modeling Strategies With Bayes
+Version: 0.1.0
+Authors@R: 
+    person(given = "Frank",
+           family = "Harrell",
+           role = c("aut", "cre"),
+           email = "fh@fharrell.com",
+           comment = c(ORCID = "0000-0002-8271-5493"))
+Description: This package is a Bayesian companion to the `rms` package.  It provides Bayesian model fitting, post-fit estimation, and graphics.  It implements Bayesian regression models whose fit objects can be processed by \pkg{rms} functions such as \code{contrast, summary, Predict, nomogram}, and \code{latex}.  The fitting function currently implemented in the package is \code{blrm} for Bayesian logistic binary and ordinal regression with optional clustering, censoring, and departures from the proportional odds assumption using the partial proportional odds model of Peterson and Harrell (1990).
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+URL: https://hbiostat.org/R/rmsb
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
+Biarch: true
+Depends: 
+    R (>= 3.4.0),
+    rms (>= 6.0.1)
+Imports: 
+    methods,
+    Rcpp (>= 0.12.0),
+    RcppParallel (>= 5.0.1),
+    rstan (>= 2.18.1),
+    rstantools (>= 2.1.1),
+    Hmisc (>= 4.3-0),
+    survival (>= 3.1-12),
+		ggplot2,
+		MASS, cluster, digest, knitr, loo
+LinkingTo: 
+    BH (>= 1.66.0),
+    Rcpp (>= 0.12.0),
+    RcppEigen (>= 0.3.3.3.0),
+    RcppParallel (>= 5.0.1),
+    rstan (>= 2.18.1),
+    StanHeaders (>= 2.18.0)
+SystemRequirements: GNU make
