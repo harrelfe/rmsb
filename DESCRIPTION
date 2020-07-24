@@ -1,13 +1,14 @@
 Package: rmsb
-Title: Regression Modeling Strategies With Bayes
+Title: Bayesian Regression Modeling Strategies
 Version: 0.1.0
+Date: 2020-07-21
 Authors@R: 
     person(given = "Frank",
            family = "Harrell",
            role = c("aut", "cre"),
            email = "fh@fharrell.com",
            comment = c(ORCID = "0000-0002-8271-5493"))
-Description: This package is a Bayesian companion to the `rms` package.  It provides Bayesian model fitting, post-fit estimation, and graphics.  It implements Bayesian regression models whose fit objects can be processed by \pkg{rms} functions such as \code{contrast, summary, Predict, nomogram}, and \code{latex}.  The fitting function currently implemented in the package is \code{blrm} for Bayesian logistic binary and ordinal regression with optional clustering, censoring, and departures from the proportional odds assumption using the partial proportional odds model of Peterson and Harrell (1990).
+Description: A Bayesian companion to the 'rms' package, 'rmsb' provides Bayesian model fitting, post-fit estimation, and graphics.  It implements Bayesian regression models whose fit objects can be processed by 'rms' functions such as 'contrast', 'summary', 'Predict', 'nomogram', and 'latex'.  The fitting function currently implemented in the package is 'blrm' for Bayesian logistic binary and ordinal regression with optional clustering, censoring, and departures from the proportional odds assumption using the partial proportional odds model of Peterson and Harrell (1990) <doi:10.2307/2347760>.
 License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
