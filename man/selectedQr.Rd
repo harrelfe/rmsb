@@ -25,7 +25,6 @@ QR Decomposition Preserving Selected Columns
 Runs a matrix through the QR decomposition and returns the transformed matrix and the forward and inverse transforming matrices \verb{R, Rinv}.  If columns of the input matrix \code{X} are centered the QR transformed matrix will be orthogonal.  This is helpful in understanding the transformation and in scaling prior distributions on the transformed scale.  \code{not} can be specified to keep selected columns as-is.  \code{cornerQr} leaves the last column of \code{X} alone (possibly after centering).  When \code{not} is specified, the square transforming matrices have appropriate identity submatrices inserted so that recreation of original \code{X} is automatic.
 }
 \examples{
-\dontrun{
   x <- 1 : 10
   X <- cbind(x, x^2)
   w <- selectedQr(X)
@@ -39,7 +38,6 @@ Runs a matrix through the QR decomposition and returns the transformed matrix an
   X <- cbind(x, x^3, x^4, x^2)
   w <- selectedQr(X, not=2:3)
   with(w, X \%*\% R)
-}
 }
 \author{
 Ben Goodrich and Frank Harrell

@@ -768,7 +768,7 @@ rbind('No cens:mode'=coef(f, 'mode'),
 
 When possible, full joint Bayesian modeling of (possibly missing) covariates and the outcome variable should be used to get exact inference in the presence of missing covariate values.  Another good approach is to use multiple imputation with stacking of posterior draws after running the Bayesian model for each completed dataset.  When doing posterior inference on the stacked posterior draws the uncertainty from multiple imputation is fully taken into account, and so is the change in posterior distribution.   Frequentist inference requires complex adjustments, as multiple imputation alters the sampling distribution of model parameter estimates.  For example, regression coefficient estimates that have a normal distribution with complete data may have a $t$-like distribution after multiple imputation.
 
-`blrm` works with the `stackMI` function in the `rms` package to make posterior stacking easier.  It works with `Hmisc::aregImpute` and the `mice` package.  `stackMI` is the analog of the `Hmisc::fit.mult.impute` but is much simpler due to the use of the Bayesian paradigm.
+`blrm` works with the `stackMI` function to make posterior stacking easier.  It works with `Hmisc::aregImpute` and the `mice` package.  `stackMI` is the analog of the `Hmisc::fit.mult.impute` but is much simpler due to the use of the Bayesian paradigm.
 
 Here is an example adapted from the `aregImpute` help file.  `aregImpute` is cached so that the random seed-initiated multiple imputation process will not be re-run if not necessary.  That will allow the Stan code to not be run again until the underlying data changes or the code in the chunks changes.
 

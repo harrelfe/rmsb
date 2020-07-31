@@ -611,6 +611,8 @@ blrmStats <- function(fit, ns=400, prob=0.95, pl=FALSE,
   names(text) <- statnames
 
   if(pl) {
+    oldpar <- par(no.readonly=TRUE)
+    on.exit(par(oldpar))
     par(mfrow=c(4,2), mar=c(3, 2, 0.5, 0.5), mgp=c(1.75, .55, 0))
     for(w in setdiff(statnames, 'C')) {
       p <- switch(dist,

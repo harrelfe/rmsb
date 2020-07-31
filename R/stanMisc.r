@@ -17,7 +17,7 @@ stanDx <- function(object) {
   if(! length(n.impute)) n.impute <- 1
   d <- object$diagnostics
   if(n.impute == 1 && (length(names(d)) == 1 && names(d) == 'pars')) {
-    cat('Diagnostics failed trying to summarize', d$pars, '\n')
+    warning('Diagnostics failed trying to summarize', d$pars)
     return(invisible())
   }
   if(n.impute > 1) cat('Diagnostics for each of', n.impute, 'imputations\n\n')
@@ -632,7 +632,6 @@ utils::globalVariables('Probability')     # why in the world needed?
 ##' @param center set to `FALSE` to not center columns of `X` first
 ##' @return list with elements `X, R, Rinv, xbar` where `xbar` is the vector of means (vector of zeros if `center=FALSE`)
 ##' @examples
-##' \dontrun{
 ##'   x <- 1 : 10
 ##'   X <- cbind(x, x^2)
 ##'   w <- selectedQr(X)
@@ -646,7 +645,6 @@ utils::globalVariables('Probability')     # why in the world needed?
 ##'   X <- cbind(x, x^3, x^4, x^2)
 ##'   w <- selectedQr(X, not=2:3)
 ##'   with(w, X %*% R)
-##' }
 ##' @author Ben Goodrich and Frank Harrell
 ##' @export
 selectedQr <- function(X, not=NULL, corner=FALSE, center=TRUE) {
