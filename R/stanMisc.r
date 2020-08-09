@@ -1,7 +1,6 @@
 ##' Print Stan Diagnostics
 ##'
 ##' Retrieves the effect samples sizes and Rhats computed after a fitting function ran `rstan`, and prepares it for printing.  If the fit was created by `stackImpute`, the diagnostics for all imputations are printed (separately).
-##' @title stanDx
 ##' @param object an object created by an `rms` package Bayesian fitting function such as [blrm()] or [stackMI()]
 ##' @return matrix suitable for printing
 ##' @examples
@@ -48,7 +47,6 @@ stanDx <- function(object) {
 ##' Get Stan Output
 ##'
 ##' Extracts the object created by [rstan::sampling()] so that standard Stan diagnostics can be run from it
-##' @title stanGet
 ##' @param object an objected created by an `rms` package Bayesian fitting function
 ##' @return the object created by [rstan::sampling()]
 ##' @examples
@@ -63,7 +61,6 @@ stanGet <- function(object) object$rstan
 ##' Extract Bayesian Summary of Coefficients
 ##'
 ##' Computes either the posterior mean (default), posterior median, or posterior mode of the parameters in an `rms` Bayesian regression model
-##' @title coef.rmsb
 ##' @param object an object created by an `rms` package Bayesian fitting function
 ##' @param stat name of measure of posterior distribution central tendency to compute
 ##' @param ... ignored
@@ -87,7 +84,6 @@ coef.rmsb <- function(object, stat=c('mean', 'median', 'mode'), ...) {
 ##' Variance-Covariance Matrix
 ##'
 ##' Computes the variance-covariance matrix from the posterior draws by compute the sample covariance matrix of the draws
-##' @title vcov.rmsb
 ##' @param object an object produced by an `rms` package Bayesian fitting function
 ##' @param regcoef.only set to `FALSE` to also include non-regression coefficients such as shape/scale parameters
 ##' @param intercepts set to `'all'` to include all intercepts (the default), `'none'` to exclude them all, or a vector of integers to get selected intercepts
@@ -127,7 +123,6 @@ vcov.rmsb <- function(object, regcoef.only=TRUE,
 ##' Basic Print for Bayesian Parameter Summary
 ##'
 ##' For a Bayesian regression fit prints the posterior mean, median, SE, highest posterior density interval, and symmetry coefficient from the posterior draws.  For a given parameter, the symmetry measure is computed using the `distSym` function.
-##' @title print.rmsb
 ##' @param x an object created by an `rms` Bayesian fitting function
 ##' @param prob HPD interval coverage probability (default is 0.95)
 ##' @param dec amount of rounding (digits to the right of the decimal)
@@ -169,7 +164,6 @@ print.rmsb <- function(x, prob=0.95, dec=4, intercepts=TRUE, pr=TRUE, ...) {
 ##' Plot Posterior Densities and Summaries
 ##'
 ##' For an `rms` Bayesian fit object, plots posterior densities for selected parameters along with posterior mode, mean, median, and highest posterior density interval.  If the fit was produced by `stackMI` the density represents the distribution after stacking the posterior draws over imputations, and the per-imputation density is also drawn as pale curves.  If exactly two parameters are being plotted and `bivar=TRUE`, hightest bivariate posterior density contrours are plotted instead, for a variety of `prob` values including the one specified, using
-##' @title plot.rmsb
 ##' @param x an `rms` Bayesian fit object
 ##' @param which names of parameters to plot, defaulting to all non-intercepts. Can instead be a vector of integers.
 ##' @param nrow number of rows of plots
@@ -258,7 +252,6 @@ plot.rmsb <- function(x, which=NULL, nrow=NULL, ncol=NULL, prob=0.95,
 ##' Diagnostic Trace Plots
 ##'
 ##' For an `rms` Bayesian fit object, uses by default the stored posterior draws to check convergence properties of posterior sampling.  If instead `rstan=TRUE`, calls the `rstan` `traceplot` function on the `rstan` object inside the `rmsb` object, to check properties of posterior sampling.  If `rstan=TRUE` and the `rstan` object has been removed and `previous=TRUE`, attempts to find an already existing plot created by a previous run of the `knitr` chunk, assuming it was the `plotno` numbered plot of the chunk.
-##' @title stanDxplot
 ##' @param x an `rms` Bayesian fit object
 ##' @param which names of parameters to plot, defaulting to all non-intercepts.  When `rstan=FALSE` these are the friendly `rms` names, otherwise they are the `rstan` parameter names.  If the model fit was run through `stackMI` for multiple imputation, the number of traces is multiplied by the number of imputations.  Set to `'ALL'` to plot all parameters.
 ##' @param rstan set to `TRUE` to use [rstan::traceplot()] on a (presumed) stored `rstan` object in `x`, otherwise only real iterations are plotted and parameter values are shown as points instead of lines, with chains separated
@@ -324,7 +317,6 @@ stanDxplot <- function(x, which=NULL, rstan=FALSE, previous=TRUE,
 ##' Function Generator for Posterior Probabilities of Assertions
 ##'
 ##' From a Bayesian fit object such as that from [blrm()] generates an R function for evaluating the probability that an assertion is true.  The probability, within simulation error, is the proportion of times the assertion is true over the posterior draws.  If the assertion does not evaluate to a logical or 0/1 quantity, it is taken as a continuous derived parameter and the vector of draws for that parameter is returned and can be passed to the `PostF` plot method.  `PostF` can also be used on objects created by `contrast.rms`
-##' @title PostF
 ##' @param fit a Bayesian fit or `contrast.rms` object
 ##' @param name specifies whether assertions will refer to shortened parameter names (the default) or original names.  Shorted names are of the form `a1, ..., ak` where `k` is the number of intercepts in the model, and `b1, ..., bp` where `p` is the number of non-intercepts.  When using original names that are not legal R variable names, you must enclose them in backticks.  For `contrast` objects, `name` is ignored and you must use contrast names.  The `cnames` argument to `contrast.rms` is handy for assigning your own names.
 ##' @param pr set to `TRUE` to have a table of short names and original names printed when `name='short'`.  For `contrasts` the contrast names are printed if `pr=TRUE`.
@@ -394,7 +386,6 @@ PostF <- function(fit, name=c('short', 'orig'), pr=FALSE) {
 ##' Plot Posterior Density of `PostF`
 ##'
 ##' Computes highest posterior density and posterior mean and median as vertical lines, and plots these on the density function.  You can transform the posterior draws while plotting.
-##' @title plot.PostF
 ##' @param x result of running a function created by `PostF`
 ##' @param ... other results created by such functions
 ##' @param cint interval probability
@@ -458,7 +449,6 @@ plot.PostF <- function(x, ..., cint=0.95, label=NULL,
 ##' Get a Bayesian Parameter Vector Summary
 ##'
 ##' Retrieves posterior mean, median, or mode (if available)
-##' @title getParamCoef
 ##' @param fit a Bayesian model fit from `rmsb`
 ##' @param posterior.summary which summary statistic (Bayesian point estimate) to fetch
 ##' @param what specifies which coefficients to include.  Default is all.  Specify `what="betas"` to include only intercepts and betas if the model is a partial proportional odds model (i.e.,, exclude the tau parameters).  Specify `what="taus"` to include only the tau parameters.
@@ -491,7 +481,6 @@ getParamCoef <- function(fit, posterior.summary=c('mean', 'median', 'mode'),
 ##' Compare Bayesian Model Fits
 ##'
 ##' Uses [loo::loo_model_weights()] to compare a series of models such as those created with [blrm()]
-##' @title compareBmods
 ##' @param ... a series of model fits
 ##' @param method see [loo::loo_model_weights()]
 ##' @param r_eff_list see [loo::loo_model_weights()]
@@ -507,7 +496,6 @@ compareBmods <- function(..., method='stacking', r_eff_list=NULL) {
 ##' Highest Posterior Density Interval
 ##'
 ##' Adapts code from [coda::HPDinterval()] to compute a highest posterior density interval from posterior samples for a single parameter.  Quoting from the `coda` help file, for each parameter the interval is constructed from the empirical cdf of the sample as the shortest interval  for  which  the  difference  in  the  ecdf  values  of  the  endpoints  is  the  nominal  probability.  Assuming that the distribution is not severely multimodal, this is the HPD interval.
-##' @title HPDint
 ##' @param x a vector of posterior draws
 ##' @param prob desired probability coverage
 ##' @return a 2-vector with elements `Lower` and `Upper`
@@ -525,7 +513,6 @@ HPDint <- function(x, prob = 0.95) {
 ##' Distribution Symmetry Measure
 ##'
 ##' From a sample from a distribution computes a symmetry measure.  By default it is the gap between the mean and the 0.95 quantile divided by the gap between the 0.05 quantile and the mean.
-##' @title distSym
 ##' @param x a numeric vector representing a sample from a continuous distribution
 ##' @param prob quantile interval coverage
 ##' @param na.rm set to `TRUE` to remove `NA`s before proceeding.
@@ -544,7 +531,6 @@ distSym <- function(x, prob=0.9, na.rm=FALSE) {
 ##'
 ##' Computes coordinates of a highest density contour containing a given probability volume given a sample from a continuous bivariate distribution, and optionally plots.  The default method assumes an elliptical shape, but one can optionally use a kernel density estimator.
 ##' Code adapted from `embbook::HPDregionplot`.  See <http://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse>.
-##' @title pdensityContour
 ##' @param x a numeric vector
 ##' @param y a numeric vector the same length of x
 ##' @param prob main probability coverage (the only one for `method='ellipse'`)
@@ -625,7 +611,6 @@ utils::globalVariables('Probability')     # why in the world needed?
 ##' QR Decomposition Preserving Selected Columns
 ##'
 ##' Runs a matrix through the QR decomposition and returns the transformed matrix and the forward and inverse transforming matrices `R, Rinv`.  If columns of the input matrix `X` are centered the QR transformed matrix will be orthogonal.  This is helpful in understanding the transformation and in scaling prior distributions on the transformed scale.  `not` can be specified to keep selected columns as-is.  `cornerQr` leaves the last column of `X` alone (possibly after centering).  When `not` is specified, the square transforming matrices have appropriate identity submatrices inserted so that recreation of original `X` is automatic.
-##' @title selectedQr
 ##' @param X a numeric matrix
 ##' @param not an integer vector specifying which columns of `X` are to be kept with their original values
 ##' @param corner set to `FALSE` to not treat the last column specially.  You may not specify both `not` and `corner`.

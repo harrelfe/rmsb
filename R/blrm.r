@@ -9,7 +9,6 @@
 ##' [blrm()] also handles single-level hierarchical random effects models for the case when there are repeated measurements per subject which are reflected as random intercepts, and a different experimental model that allows for AR(1) serial correlation within subject.  For both setups, a `cluster` term in the model signals the existence of subject-specific random effects.
 ##'
 ##' See <https://hbiostat.org/R/rms/blrm.html> for multiple examples with results.
-##' @title blrm
 ##' @param formula a R formula object that can use `rms` package enhancements such as the restricted interaction operator
 ##' @param ppo formula specifying the model predictors for which proportional odds is not assumed
 ##' @param cppo a function that if present causes a constrained partial PO model to be fit.  The function specifies the values in the Gamma vector in Peterson and Harrell (1990) equation (6).  To make posterior sampling better behaved, the function should be scaled and centered.  This is done by wrapping `cppo` in a function that scales the `cppo` result before return the vector value.  See the `normcco` argument for how to prevent this.  The default normalization is based on the mean and standard deviation of the function values over the distribution of observed Y.  For getting predicted values and estimates post-[blrm()], `cppo` must not reference any functions that are not available at such later times.
@@ -511,7 +510,6 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 ##'
 ##' For a binary or ordinal logistic regression fit from [blrm()], computes several indexes of predictive accuracy along with highest posterior density intervals for them.  Optionally plots their posterior densities.
 ##' When there are more than two levels of the outcome variable, computes Somers' Dxy and c-index on a random sample of 10,000 observations.
-##' @title blrmStats
 ##' @param fit an object produced by [blrm()]
 ##' @param ns number of posterior draws to use in the calculations (default is 400)
 ##' @param prob HPD interval probability (default is 0.95)
@@ -636,7 +634,6 @@ blrmStats <- function(fit, ns=400, prob=0.95, pl=FALSE,
 ##' Print Details for `blrmStats` Predictive Accuracy Measures
 ##'
 ##' Prints results of `blrmStats` with brief explanations
-##' @title print.blrmStats
 ##' @param x an object produced by `blrmStats`
 ##' @param dec number of digits to round indexes
 ##' @param ... ignored
@@ -672,7 +669,6 @@ print.blrmStats <- function(x, dec=3, ...) {
 ##' Print [blrm()] Results
 ##'
 ##' Prints main results from [blrm()] along with indexes and predictive accuracy and their highest posterior density intervals computed from `blrmStats`.
-##' @title print.blrm
 ##' @param x object created by [blrm()]
 ##' @param dec number of digits to print to the right of the decimal
 ##' @param coefs specify `FALSE` to suppress printing parameter estimates, and in integer k to print only the first k
@@ -793,7 +789,6 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
 ##' Make predictions from a [blrm()] fit
 ##'
 ##' Predict method for [blrm()] objects
-##' @title predict.blrm
 ##' @param object,...,type,se.fit,codes see [predict.lrm]
 ##' @param posterior.summary set to `'median'` or `'mode'` to use posterior median/mode instead of mean
 ##' @param cint probability for highest posterior density interval
@@ -965,7 +960,6 @@ predict.blrm <- function(object, ...,
 ##' Print Predictions for [blrm()]
 ##'
 ##' Prints the summary portion of the results of `predict.blrm`
-##' @title print.predict.blrm
 ##' @param x result from `predict.blrm`
 ##' @param digits number of digits to round numeric results
 ##' @param ... ignored
@@ -982,7 +976,6 @@ print.predict.blrm <- function(x, digits=3, ...) {
 ##' Function Generator for Mean Y for [blrm()]
 ##'
 ##' Creates a function to turn a posterior summarized linear predictor lp (e.g. using posterior mean of intercepts and slopes) computed at the reference intercept into e.g. an estimate of mean Y using the posterior mean of all the intercept.  `lptau` must be provided when call the created function if the model is a partial proportional odds model.
-##' @title Mean.blrm
 ##' @param object a [blrm()] fit
 ##' @param codes if `TRUE`, use the integer codes \eqn{1,2,\ldots,k} for the \eqn{k}-level response in computing the predicted mean response.
 ##' @param posterior.summary defaults to posterior mean; may also specify `"median"`.  Must be consistent with the summary used when creating `lp`.
@@ -1046,7 +1039,6 @@ Mean.blrm <- function(object, codes=FALSE,
 ##' Function Generator for Quantiles of Y for [blrm()]
 ##'
 ##' Creates a function to turn a posterior summarized linear predictor lp (e.g. using posterior mean of intercepts and slopes) computed at the reference intercept into e.g. an estimate of a quantile of Y using the posterior mean of all the intercepts.  `lptau` must be provided when call the created function if the model is a partial proportional odds model.
-##' @title Quantile.blrm
 ##' @param object a [blrm()] fit
 ##' @param codes if `TRUE`, use the integer codes \eqn{1,2,\ldots,k} for the \eqn{k}-level response in computing the quantile
 ##' @param posterior.summary defaults to posterior mean; may also specify `"median"`.  Must be consistent with the summary used when creating `lp`.
@@ -1125,7 +1117,6 @@ Quantile.blrm <- function(object, codes=FALSE,
 ##' Function Generator for Exceedance Probabilities for [blrm()]
 ##'
 ##' For a [blrm()] object generates a function for computing the	estimates of the function Prob(Y>=y) given one or more values of the linear predictor using the reference (median) intercept.  This function can optionally be evaluated at only a set of user-specified	`y` values, otherwise a right-step function is returned.  There is a plot method for plotting the step functions, and if more than one linear predictor was evaluated multiple step functions are drawn. `ExProb` is especially useful for `nomogram()`.  The linear predictor argument is a posterior summarized linear predictor lp (e.g. using posterior mean of intercepts and slopes) computed at the reference intercept.  `lptau` must be provided when call the created function if the model is a partial proportional odds model.
-##' @title ExProb.blrm
 ##' @param object a [blrm()] fit
 ##' @param posterior.summary defaults to posterior mean; may also specify `"median"`.  Must be consistent with the summary used when creating `lp`.
 ##' @param ... ignored
@@ -1193,7 +1184,6 @@ ExProb.blrm <- function(object,
 ##' Fetch Partial Proportional Odds Parameters
 ##'
 ##' Fetches matrix of posterior draws for partial proportional odds parameters (taus) for a given intercept.  Can also form a matrix containing both regular parameters and taus, or for just non-taus.  For the constrained partial proportional odds model the function returns the appropriate `cppo` function value multiplied by tau (tau being a vector in this case and not a matrix).
-##' @title tauFetch
 ##' @param fit an object created by [blrm()]
 ##' @param intercept integer specifying which intercept to fetch
 ##' @param what specifies the result to return
@@ -1247,7 +1237,6 @@ tauFetch <- function(fit, intercept, what=c('tau', 'nontau', 'both')) {
 ##' Censored Ordinal Variable
 ##'
 ##' Creates a 2-column integer matrix that handles left- right- and interval-censored ordinal or continuous values for use in [blrm()].  A pair of values `[a, b]` represents an interval-censored value known to be in the interval `[a, b]` inclusive of `a` and `b`.  It is assumed that all distinct values are observed as uncensored for at least one observation.  When both input variables are `factor`s it is assume that the one with the higher number of levels is the one that correctly specifies the order of levels, and that the other variable does not contain any additional levels.  If the variables are not `factor`s it is assumed their original values provide the orderings.  Since all values that form the left or right endpoints of an interval censored value must be represented in the data, a left-censored point is is coded as `a=1` and a right-censored point is coded as `b` equal to the maximum observed value.  If the maximum observed value is not really the maximum possible value, everything still works except that predictions involving values above the highest observed value cannot be made.  As with most censored-data methods, [blrm()] assumes that censoring is independent of the response variable values that would have been measured had censoring not occurred.
-##' @title Ocens
 ##' @param a vector representing a `factor`, numeric, or alphabetically ordered character strings
 ##' @param b like `a`.  If omitted, it copies `a`, representing nothing but uncensored values
 ##' @return a 2-column integer matrix of class `"Ocens"` with an attribute `levels` (ordered).  When the original variables were `factor`s, these are factor levels, otherwise are numerically or alphabetically sorted distinct (over `a` and `b` combined) values.  When the variables are not factors and are numeric, another attribute `median` is also returned.  This is the median of the uncensored values.  When the variables are factor or character, the median of the integer versions of variables for uncensored observations is returned as attribute `mid`.  A final attribute `freq` is the vector of frequencies of occurrences of all uncensored values.  `freq` aligns with `levels`.
@@ -1299,7 +1288,6 @@ Ocens <- function(a, b=a) {
 ##' Convert `Ocens` Object to Data Frame to Facilitate Subset
 ##'
 ##' Converts an `Ocens` object to a data frame so that subsetting will preserve all needed attributes
-##' @title as.data.frame.Ocens
 ##' @param x an `Ocens` object
 ##' @param row.names optional vector of row names
 ##' @param optional set to `TRUE` if needed

@@ -1,2 +1,2 @@
 Changes for 0.0-2
-
+   * Removed @title lines from Roxygen comments

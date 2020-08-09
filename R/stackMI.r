@@ -1,7 +1,6 @@
 ##' Bayesian Model Fitting and Stacking for Multiple Imputation
 ##'
 ##' Runs an \code{rmsb} package Bayesian fitting function such as \code{blrm} separately for each completed dataset given a multiple imputation result such as one produced by \code{Hmisc::aregImpute}.  Stacks the posterior draws and diagnostics across all imputations, and computes parameter summaries on the stacked posterior draws.
-##' stackMI 
 ##' @param formula a model formula
 ##' @param fitter a Bayesian fitter
 ##' @param xtrans an object created by \code{transcan}, \code{\link{aregImpute}}, or \code{\link[mice]{mice}}
