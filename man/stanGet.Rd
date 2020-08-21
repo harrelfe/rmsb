@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{stanGet}
 \alias{stanGet}
-\title{stanGet}
+\title{Get Stan Output}
 \usage{
 stanGet(object)
 }
@@ -13,9 +13,6 @@ stanGet(object)
 the object created by \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}}
 }
 \description{
-Get Stan Output
-}
-\details{
 Extracts the object created by \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} so that standard Stan diagnostics can be run from it
 }
 \examples{

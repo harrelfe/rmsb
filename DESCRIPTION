@@ -1,7 +1,7 @@
 Package: rmsb
 Title: Bayesian Regression Modeling Strategies
 Version: 0.0.2
-Date: 2020-08-09
+Date: 2020-08-21
 Authors@R: 
     c(person(given = "Frank",
            family = "Harrell",
@@ -25,13 +25,13 @@ Description: A Bayesian companion to the 'rms' package, 'rmsb' provides Bayesian
 License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
-URL: https://hbiostat.org/R/rmsb
+URL: https://hbiostat.org/R/rmsb/
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.1
 Biarch: true
 Depends: 
     R (>= 3.4.0),
-    rms (>= 6.0.1)
+    rms (>= 6.0.2)
 Imports: 
     methods,
     Rcpp (>= 0.12.0),
@@ -52,4 +52,3 @@ LinkingTo:
 Suggests:
     mice
 SystemRequirements: GNU make
-

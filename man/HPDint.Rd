@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{HPDint}
 \alias{HPDint}
-\title{HPDint}
+\title{Highest Posterior Density Interval}
 \usage{
 HPDint(x, prob = 0.95)
 }
@@ -15,9 +15,6 @@ HPDint(x, prob = 0.95)
 a 2-vector with elements \code{Lower} and \code{Upper}
 }
 \description{
-Highest Posterior Density Interval
-}
-\details{
 Adapts code from \code{\link[coda:HPDinterval]{coda::HPDinterval()}} to compute a highest posterior density interval from posterior samples for a single parameter.  Quoting from the \code{coda} help file, for each parameter the interval is constructed from the empirical cdf of the sample as the shortest interval  for  which  the  difference  in  the  ecdf  values  of  the  endpoints  is  the  nominal  probability.  Assuming that the distribution is not severely multimodal, this is the HPD interval.
 }
 \author{

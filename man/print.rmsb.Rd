@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{print.rmsb}
 \alias{print.rmsb}
-\title{print.rmsb}
+\title{Basic Print for Bayesian Parameter Summary}
 \usage{
 \method{print}{rmsb}(x, prob = 0.95, dec = 4, intercepts = TRUE, pr = TRUE, ...)
 }
@@ -23,9 +23,6 @@
 matrix (rounded if \code{pr=TRUE})
 }
 \description{
-Basic Print for Bayesian Parameter Summary
-}
-\details{
 For a Bayesian regression fit prints the posterior mean, median, SE, highest posterior density interval, and symmetry coefficient from the posterior draws.  For a given parameter, the symmetry measure is computed using the \code{distSym} function.
 }
 \examples{

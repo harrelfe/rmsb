@@ -29,8 +29,8 @@
 #'
 #' @seealso
 #' \itemize{
-#'   \item \url{http://hbiostat.org/R/rmsb} for the package's main web page
-#'   \item \url{http://hbiostat.org/R/rmsb/blrm.html} for a vignette with
+#'   \item \url{https://hbiostat.org/R/rmsb/} for the package's main web page
+#'   \item \url{https://hbiostat.org/R/rmsb/blrm.html} for a vignette with
 #'       many examples of using the \code{blrm} function
 #' }
 #'

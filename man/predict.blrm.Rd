@@ -2,33 +2,45 @@
 % Please edit documentation in R/blrm.r
 \name{predict.blrm}
 \alias{predict.blrm}
-\title{predict.blrm}
+\title{Make predictions from a \code{\link[=blrm]{blrm()}} fit}
 \usage{
 \method{predict}{blrm}(
   object,
   ...,
+  kint = NULL,
+  ycut = NULL,
+  zcppo = TRUE,
+  fun = NULL,
+  funint = TRUE,
   type = c("lp", "fitted", "fitted.ind", "mean", "x", "data.frame", "terms", "cterms",
     "ccterms", "adjto", "adjto.data.frame", "model.frame"),
   se.fit = FALSE,
   codes = FALSE,
-  posterior.summary = c("mean", "median"),
+  posterior.summary = c("mean", "median", "all"),
   cint = 0.95
 )
 }
 \arguments{
-\item{object, ..., type, se.fit, codes}{see \link{predict.lrm}}
+\item{object, ..., type, se.fit, codes}{see \code{\link[=predict.lrm]{predict.lrm()}}}
 
-\item{posterior.summary}{set to \code{'median'} or \code{'mode'} to use posterior median/mode instead of mean}
+\item{kint}{This is only useful in a multiple intercept model such as the ordinal    logistic model. There to use to second of three intercepts, for example,    specify \code{kint=2}. The default is the middle    intercept corresponding to the median \code{y}.  You can specify \code{ycut} instead, and the intercept    corresponding to Y >= \code{ycut} will be used for \code{kint}.}
 
-\item{cint}{probability for highest posterior density interval}
+\item{ycut}{for an ordinal model specifies the Y cutoff to use in evaluating departures from proportional odds, when the constrained partial proportional odds model is used.  When omitted, \code{ycut}    is implied by \code{kint}.  The only time it is absolutely mandatory    to specify \code{ycut} is when computing an effect (e.g., odds ratio) at a level of the response variable that did not occur in the data.    This would only occur when the \code{cppo} function given to    \code{blrm} is a continuous function.  If \code{type='x'} and neither \code{kint} nor \code{ycut} are given, the partial PO part of the design matrix is not multiplied by the \code{cppo} function.  If \code{type='x'}, the number of predicted observations is 1, \code{ycut} is longer than 1, and \code{zcppo} is \code{TRUE}, predictions are duplicated to the length of \code{ycut} as it is assumed that the user wants to see the effect of varying \code{ycut}, e.g., to see cutoff-specific odds ratios.}
+
+\item{zcppo}{applies only to \code{type='x'} for a constrained partial PO model.  Set to \code{FALSE} to prevent multiplication of Z matrix by \code{cppo(ycut)}.}
+
+\item{fun}{a function to evaluate on the linear predictor, e.g. a function created by \code{\link[=Mean]{Mean()}} or \code{\link[=Quantile]{Quantile()}}}
+
+\item{funint}{set to \code{FALSE} if \code{fun} is not a function such as the result of \code{\link[=Mean]{Mean()}}, \code{\link[=Quantile]{Quantile()}}, or \code{\link[=ExProb]{ExProb()}} that    contains an \code{intercepts} argument}
+
+\item{posterior.summary}{set to \code{'median'} or \code{'mode'} to use posterior median/mode instead of mean. For some \code{type}s set to \code{'all'} to compute the needed quantity for all posterior draws, and return one more dimension in the array.}
+
+\item{cint}{probability for highest posterior density interval.  Set to \code{FALSE} to suppress calculation of the interval.}
 }
 \value{
 a data frame,  matrix, or vector with posterior summaries for the requested quantity, plus an attribute \code{'draws'} that has all the posterior draws for that quantity.  For \code{type='fitted'} and \code{type='fitted.ind'} this attribute is a 3-dimensional array representing draws x observations generating predictions x levels of Y.
 }
 \description{
-Make predictions from a \code{\link[=blrm]{blrm()}} fit
-}
-\details{
 Predict method for \code{\link[=blrm]{blrm()}} objects
 }
 \examples{
@@ -38,7 +50,7 @@ Predict method for \code{\link[=blrm]{blrm()}} objects
 }
 }
 \seealso{
-\link{predict.lrm}
+\code{\link[=predict.lrm]{predict.lrm()}}
 }
 \author{
 Frank Harrell

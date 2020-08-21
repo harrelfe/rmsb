@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{PostF}
 \alias{PostF}
-\title{PostF}
+\title{Function Generator for Posterior Probabilities of Assertions}
 \usage{
 PostF(fit, name = c("short", "orig"), pr = FALSE)
 }
@@ -17,9 +17,6 @@ PostF(fit, name = c("short", "orig"), pr = FALSE)
 an R function
 }
 \description{
-Function Generator for Posterior Probabilities of Assertions
-}
-\details{
 From a Bayesian fit object such as that from \code{\link[=blrm]{blrm()}} generates an R function for evaluating the probability that an assertion is true.  The probability, within simulation error, is the proportion of times the assertion is true over the posterior draws.  If the assertion does not evaluate to a logical or 0/1 quantity, it is taken as a continuous derived parameter and the vector of draws for that parameter is returned and can be passed to the \code{PostF} plot method.  \code{PostF} can also be used on objects created by \code{contrast.rms}
 }
 \examples{

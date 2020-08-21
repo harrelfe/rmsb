@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{compareBmods}
 \alias{compareBmods}
-\title{compareBmods}
+\title{Compare Bayesian Model Fits}
 \usage{
 compareBmods(..., method = "stacking", r_eff_list = NULL)
 }
@@ -17,9 +17,6 @@ compareBmods(..., method = "stacking", r_eff_list = NULL)
 a \code{\link[loo:loo_model_weights]{loo::loo_model_weights()}} object
 }
 \description{
-Compare Bayesian Model Fits
-}
-\details{
 Uses \code{\link[loo:loo_model_weights]{loo::loo_model_weights()}} to compare a series of models such as those created with \code{\link[=blrm]{blrm()}}
 }
 \author{

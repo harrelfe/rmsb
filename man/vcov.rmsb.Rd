@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{vcov.rmsb}
 \alias{vcov.rmsb}
-\title{vcov.rmsb}
+\title{Variance-Covariance Matrix}
 \usage{
 \method{vcov}{rmsb}(object, regcoef.only = TRUE, intercepts = "all", ...)
 }
@@ -19,9 +19,6 @@
 matrix
 }
 \description{
-Variance-Covariance Matrix
-}
-\details{
 Computes the variance-covariance matrix from the posterior draws by compute the sample covariance matrix of the draws
 }
 \examples{

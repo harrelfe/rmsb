@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{blrmStats}
 \alias{blrmStats}
-\title{blrmStats}
+\title{Compute Indexes of Predictive Accuracy and Their Uncertainties}
 \usage{
 blrmStats(fit, ns = 400, prob = 0.95, pl = FALSE, dist = c("density", "hist"))
 }
@@ -30,9 +30,6 @@ list of class \code{blrmStats} whose most important element is \code{Stats}.  Th
 }
 }
 \description{
-Compute Indexes of Predictive Accuracy and Their Uncertainties
-}
-\details{
 For a binary or ordinal logistic regression fit from \code{\link[=blrm]{blrm()}}, computes several indexes of predictive accuracy along with highest posterior density intervals for them.  Optionally plots their posterior densities.
 When there are more than two levels of the outcome variable, computes Somers' Dxy and c-index on a random sample of 10,000 observations.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{print.blrm}
 \alias{print.blrm}
-\title{print.blrm}
+\title{Print \code{\link[=blrm]{blrm()}} Results}
 \usage{
 \method{print}{blrm}(
   x,
@@ -33,9 +33,6 @@
 \item{...}{passed to \code{prModFit}}
 }
 \description{
-Print \code{\link[=blrm]{blrm()}} Results
-}
-\details{
 Prints main results from \code{\link[=blrm]{blrm()}} along with indexes and predictive accuracy and their highest posterior density intervals computed from \code{blrmStats}.
 }
 \examples{

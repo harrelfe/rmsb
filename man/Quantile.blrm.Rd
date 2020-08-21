@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{Quantile.blrm}
 \alias{Quantile.blrm}
-\title{Quantile.blrm}
+\title{Function Generator for Quantiles of Y for \code{\link[=blrm]{blrm()}}}
 \usage{
 \method{Quantile}{blrm}(object, codes = FALSE, posterior.summary = c("mean", "median"), ...)
 }
@@ -19,9 +19,6 @@
 an R function
 }
 \description{
-Function Generator for Quantiles of Y for \code{\link[=blrm]{blrm()}}
-}
-\details{
 Creates a function to turn a posterior summarized linear predictor lp (e.g. using posterior mean of intercepts and slopes) computed at the reference intercept into e.g. an estimate of a quantile of Y using the posterior mean of all the intercepts.  \code{lptau} must be provided when call the created function if the model is a partial proportional odds model.
 }
 \author{

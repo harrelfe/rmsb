@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{pdensityContour}
 \alias{pdensityContour}
-\title{pdensityContour}
+\title{Bivariate Posterior Contour}
 \usage{
 pdensityContour(
   x,
@@ -36,9 +36,6 @@ pdensityContour(
 a 2-column matrix with x and y coordinates unless \code{pl=TRUE} in which case a \code{ggplot2} graphic is returned
 }
 \description{
-Bivariate Posterior Contour
-}
-\details{
 Computes coordinates of a highest density contour containing a given probability volume given a sample from a continuous bivariate distribution, and optionally plots.  The default method assumes an elliptical shape, but one can optionally use a kernel density estimator.
 Code adapted from \code{embbook::HPDregionplot}.  See \url{http://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse}.
 }

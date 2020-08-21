@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{plot.PostF}
 \alias{plot.PostF}
-\title{plot.PostF}
+\title{Plot Posterior Density of \code{PostF}}
 \usage{
 \method{plot}{PostF}(
   x,
@@ -30,9 +30,6 @@
 \code{ggplot2} object
 }
 \description{
-Plot Posterior Density of \code{PostF}
-}
-\details{
 Computes highest posterior density and posterior mean and median as vertical lines, and plots these on the density function.  You can transform the posterior draws while plotting.
 }
 \author{

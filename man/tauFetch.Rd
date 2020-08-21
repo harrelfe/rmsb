@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{tauFetch}
 \alias{tauFetch}
-\title{tauFetch}
+\title{Fetch Partial Proportional Odds Parameters}
 \usage{
 tauFetch(fit, intercept, what = c("tau", "nontau", "both"))
 }
@@ -17,9 +17,6 @@ tauFetch(fit, intercept, what = c("tau", "nontau", "both"))
 matrix with number of raws equal to the numnber of original draws
 }
 \description{
-Fetch Partial Proportional Odds Parameters
-}
-\details{
 Fetches matrix of posterior draws for partial proportional odds parameters (taus) for a given intercept.  Can also form a matrix containing both regular parameters and taus, or for just non-taus.  For the constrained partial proportional odds model the function returns the appropriate \code{cppo} function value multiplied by tau (tau being a vector in this case and not a matrix).
 }
 \author{

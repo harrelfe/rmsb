@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{print.blrmStats}
 \alias{print.blrmStats}
-\title{print.blrmStats}
+\title{Print Details for \code{blrmStats} Predictive Accuracy Measures}
 \usage{
 \method{print}{blrmStats}(x, dec = 3, ...)
 }
@@ -14,9 +14,6 @@
 \item{...}{ignored}
 }
 \description{
-Print Details for \code{blrmStats} Predictive Accuracy Measures
-}
-\details{
 Prints results of \code{blrmStats} with brief explanations
 }
 \examples{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{stanDx}
 \alias{stanDx}
-\title{stanDx}
+\title{Print Stan Diagnostics}
 \usage{
 stanDx(object)
 }
@@ -13,9 +13,6 @@ stanDx(object)
 matrix suitable for printing
 }
 \description{
-Print Stan Diagnostics
-}
-\details{
 Retrieves the effect samples sizes and Rhats computed after a fitting function ran \code{rstan}, and prepares it for printing.  If the fit was created by \code{stackImpute}, the diagnostics for all imputations are printed (separately).
 }
 \examples{

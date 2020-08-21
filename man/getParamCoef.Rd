@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{getParamCoef}
 \alias{getParamCoef}
-\title{getParamCoef}
+\title{Get a Bayesian Parameter Vector Summary}
 \usage{
 getParamCoef(
   fit,
@@ -21,9 +21,6 @@ getParamCoef(
 vector of regression coefficients
 }
 \description{
-Get a Bayesian Parameter Vector Summary
-}
-\details{
 Retrieves posterior mean, median, or mode (if available)
 }
 \author{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{as.data.frame.Ocens}
 \alias{as.data.frame.Ocens}
-\title{as.data.frame.Ocens}
+\title{Convert \code{Ocens} Object to Data Frame to Facilitate Subset}
 \usage{
 \method{as.data.frame}{Ocens}(x, row.names = NULL, optional = FALSE, ...)
 }
@@ -19,9 +19,6 @@
 data frame containing a 2-column integer matrix with attributes
 }
 \description{
-Convert \code{Ocens} Object to Data Frame to Facilitate Subset
-}
-\details{
 Converts an \code{Ocens} object to a data frame so that subsetting will preserve all needed attributes
 }
 \author{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{ExProb.blrm}
 \alias{ExProb.blrm}
-\title{ExProb.blrm}
+\title{Function Generator for Exceedance Probabilities for \code{\link[=blrm]{blrm()}}}
 \usage{
 \method{ExProb}{blrm}(object, posterior.summary = c("mean", "median"), ...)
 }
@@ -17,9 +17,6 @@
 an R function
 }
 \description{
-Function Generator for Exceedance Probabilities for \code{\link[=blrm]{blrm()}}
-}
-\details{
 For a \code{\link[=blrm]{blrm()}} object generates a function for computing the	estimates of the function Prob(Y>=y) given one or more values of the linear predictor using the reference (median) intercept.  This function can optionally be evaluated at only a set of user-specified	\code{y} values, otherwise a right-step function is returned.  There is a plot method for plotting the step functions, and if more than one linear predictor was evaluated multiple step functions are drawn. \code{ExProb} is especially useful for \code{nomogram()}.  The linear predictor argument is a posterior summarized linear predictor lp (e.g. using posterior mean of intercepts and slopes) computed at the reference intercept.  \code{lptau} must be provided when call the created function if the model is a partial proportional odds model.
 }
 \author{

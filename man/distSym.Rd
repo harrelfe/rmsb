@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{distSym}
 \alias{distSym}
-\title{distSym}
+\title{Distribution Symmetry Measure}
 \usage{
 distSym(x, prob = 0.9, na.rm = FALSE)
 }
@@ -17,9 +17,6 @@ distSym(x, prob = 0.9, na.rm = FALSE)
 a scalar with a value of 1.0 indicating symmetry
 }
 \description{
-Distribution Symmetry Measure
-}
-\details{
 From a sample from a distribution computes a symmetry measure.  By default it is the gap between the mean and the 0.95 quantile divided by the gap between the 0.05 quantile and the mean.
 }
 \author{

@@ -691,10 +691,11 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
   latex <- prType() == 'latex'
 
   if(! length(title))
-    title <- paste(if(length(x$cppo)) 'Constrained',
-                   if(x$pppo > 0)     'Partial',
+    title <- paste('Bayesian',
+                   if(length(x$cppo))        'Constrained',
+                   if(x$pppo > 0)            'Partial',
                    if(length(x$ylevels) > 2) 'Proportional Odds Ordinal',
-                                      'Logistic Model')
+                                             'Logistic Model')
   z <- list()
   k <- 0
 
@@ -789,51 +790,106 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
 ##' Make predictions from a [blrm()] fit
 ##'
 ##' Predict method for [blrm()] objects
-##' @param object,...,type,se.fit,codes see [predict.lrm]
-##' @param posterior.summary set to `'median'` or `'mode'` to use posterior median/mode instead of mean
-##' @param cint probability for highest posterior density interval
+##' @param object,...,type,se.fit,codes see [predict.lrm()]
+##' @param kint	This is only useful in a multiple intercept model such as the ordinal	logistic model. There to use to second of three intercepts, for example,	specify `kint=2`. The default is the middle	intercept corresponding to the median `y`.  You can specify `ycut` instead, and the intercept	corresponding to Y >= `ycut` will be used for `kint`.
+##' @param ycut for an ordinal model specifies the Y cutoff to use in evaluating departures from proportional odds, when the constrained partial proportional odds model is used.  When omitted, `ycut`	is implied by `kint`.  The only time it is absolutely mandatory	to specify `ycut` is when computing an effect (e.g., odds ratio) at a level of the response variable that did not occur in the data.	This would only occur when the `cppo` function given to	`blrm` is a continuous function.  If `type='x'` and neither `kint` nor `ycut` are given, the partial PO part of the design matrix is not multiplied by the `cppo` function.  If `type='x'`, the number of predicted observations is 1, `ycut` is longer than 1, and `zcppo` is `TRUE`, predictions are duplicated to the length of `ycut` as it is assumed that the user wants to see the effect of varying `ycut`, e.g., to see cutoff-specific odds ratios.
+##' @param zcppo applies only to `type='x'` for a constrained partial PO model.  Set to `FALSE` to prevent multiplication of Z matrix by `cppo(ycut)`.
+##' @param fun a function to evaluate on the linear predictor, e.g. a function created by [Mean()] or [Quantile()]
+##' @param funint set to `FALSE` if `fun` is not a function such as the result of [Mean()], [Quantile()], or [ExProb()] that	contains an `intercepts` argument
+##' @param posterior.summary set to `'median'` or `'mode'` to use posterior median/mode instead of mean. For some `type`s set to `'all'` to compute the needed quantity for all posterior draws, and return one more dimension in the array.
+##' @param cint probability for highest posterior density interval.  Set to `FALSE` to suppress calculation of the interval.
 ##' @return a data frame,  matrix, or vector with posterior summaries for the requested quantity, plus an attribute `'draws'` that has all the posterior draws for that quantity.  For `type='fitted'` and `type='fitted.ind'` this attribute is a 3-dimensional array representing draws x observations generating predictions x levels of Y.
 ##' @examples
 ##' \dontrun{
 ##'   f <- blrm(...)
 ##'   predict(f, newdata, type='...', posterior.summary='median')
 ##' }
-##' @seealso [predict.lrm]
+##' @seealso [predict.lrm()]
 ##' @author Frank Harrell
+##' @md
 ##' @export
-predict.blrm <- function(object, ...,
-		type=c("lp","fitted","fitted.ind","mean","x","data.frame",
-		  "terms", "cterms", "ccterms", "adjto", "adjto.data.frame",
-      "model.frame"),
-		se.fit=FALSE, codes=FALSE,
-    posterior.summary=c('mean', 'median'), cint=0.95) {
+predict.blrm <-
+  function(object, ...,
+           kint=NULL, ycut=NULL, zcppo=TRUE,
+           fun=NULL, funint=TRUE,
+           type=c("lp","fitted","fitted.ind","mean","x","data.frame",
+                  "terms", "cterms", "ccterms", "adjto", "adjto.data.frame",
+                  "model.frame"),
+           se.fit=FALSE, codes=FALSE,
+           posterior.summary=c('mean', 'median', 'all'), cint=0.95)
+{
 
   type              <- match.arg(type)
   posterior.summary <- match.arg(posterior.summary)
 
   if(se.fit) warning('se.fit does not apply to Bayesian models')
+  if(posterior.summary == 'all' && ! missing(cint) && cint)
+    message('cint ignored when posterior.summary="all"')
+
+  kintgiven <- length(kint) > 0
+  iref <- object$interceptRef
+  if(! kintgiven) kint <- iref
+
+  ylevels   <- object$ylevels
+  ycutgiven <- length(ycut) > 0
+  if(kintgiven && ycutgiven) stop('may only specify one of kint, ycut')
+  if(! ycutgiven) ycut <- ylevels[kint + 1]
+  if(ycutgiven) {
+    if(type == 'lp' && length(ycut) > 1)
+      stop('ycut may only be a scalar for type="lp"')
+    kint <- if(all.is.numeric(ylevels)) which(ylevels == ycut[1]) - 1
+            else max((1 : length(ylevels))[ylevels <= ycut[1]]) - 1
+    }
 
   pppo <- object$pppo
-#  if(pppo > 0 && (type %in% c('lp', 'mean', 'fitted', 'fitted.ind')))
-#    stop('type not yet implemented for partial proportional odds models')
-
-  if(type %in% c('lp', 'x', 'data.frame', 'terms', 'cterms', 'ccterms',
+  if(pppo == 0) zcppo <- FALSE
+  
+  if(type == 'x' && pppo == 0)
+    return(rms::predictrms(object, ..., type='x'))
+  
+  if(type %in% c('data.frame', 'terms', 'cterms', 'ccterms',
                  'adjto', 'adjto.data.frame', 'model.frame'))
-    return(rms::predictrms(object,...,type=type,
-                      posterior.summary=posterior.summary))
+    return(rms::predictrms(object, ..., type=type))
 
-  if(type %nin% c('mean', 'fitted', 'fitted.ind'))
-    stop('types other than mean, fitted, fitted.ind not yet implemented')
+  if(pppo > 0) {
+    cppo <- object$cppo
+    if(! length(cppo))
+      stop('only constrained partial PO models are implemented at present')
+  }
+  
+  X     <- rms::predictrms(object, ..., type='x')
+  rnam  <- rownames(X)
+  n     <- nrow(X)
+
+  if(pppo > 0) {
+    Z  <- rms::predictrms(object, ..., type='x', second=TRUE)
+    nz <- nrow(Z)
+    if(n != nz) stop('program logic error 4')
+    if(type == 'x' && zcppo) {
+      ly <- length(ycut)
+      if(nz == 1 && ly > 1) {
+        X <- X[rep(1, ly),, drop=FALSE]
+        Z <- Z[rep(1, ly),, drop=FALSE]
+        }
+      else
+        if(ly %nin% c(1, nz))
+          stop('ycut must be of length 1 or the number of requested predictions')
+      nz   <- nrow(Z)
+      ycut <- rep(ycut, length=nz)
+      for(i in 1 : nz) Z[i,] <- Z[i,] * cppo(ycut[i])
+      }
+    if(type == 'x') return(cbind(X, Z))
+  }
 
   ns      <- object$non.slopes
   tauinfo <- object$tauInfo
-  cppo    <- object$cppo
 
-  if(ns == 1 & type == "mean")
-    stop('type="mean" makes no sense with a binary response')
+  if(ns == 1 && length(fun))
+    stop('specifying fun= makes no sense with a binary response')
 
   draws   <- object$draws
   ndraws  <- nrow(draws)
+  p       <- ncol(draws)
   cn      <- colnames(draws)
   ints    <- draws[, 1 : ns, drop=FALSE]
   betanam <- setdiff(cn, c(cn[1:ns], tauinfo$name))
@@ -841,73 +897,111 @@ predict.blrm <- function(object, ...,
   if(pppo > 0) {
     taunam <- tauinfo$name
     taus   <- draws[, taunam, drop=FALSE]
+  }
+
+  postsum <- switch(posterior.summary, mean=mean, median=median,
+                    all=function(z) z)
+
+  if(type == 'lp') {
+    ## If linear predictor is requested, only one intercept applies and
+    ## if the HPD interval is not requested, don't need to keep draws after
+    ## getting posterior summaries of parameters
+    ## Note that fun= that is not a function of all the intercepts can be
+    ## simply applied to linear predictor at reference intercept
+    if(length(ycut) %nin% c(1, n))
+      stop('ycut must be of length 1 or the number of requested predictions')
+    ycut <- rep(ycut, length=n)
+
+    draws1int <- draws[, c(kint, (ns + 1) : p), drop=FALSE]
+    
+    if(posterior.summary != 'all' &&
+       (! length(fun) || ! funint) & ! cint) {
+      if(pppo > 0) {
+        for(i in 1 : n) Z[i,] <- Z[i,] * cppo(ycut[i])
+        X     <- cbind(X, Z)
+      }
+      cof   <- apply(draws1int, 2, postsum)
+      lp    <- matxv(X, cof)
+      if(length(fun)) lp <- fun(lp)
+      return(lp)
     }
 
-  X <- rms::predictrms(object, ..., type='x',
-                       posterior.summary=posterior.summary)
-  if(pppo > 0) {
-    Z <- X$z
-    X <- X$x
+    ## Compute lp and for all posterior draws to create an ndraws x n matrix
+    if(! length(fun) || ! funint ) {
+      if(pppo > 0) {
+        for(i in 1 : n) Z[i,] <- Z[i,] * cppo(ycut[i])
+        X <- cbind(X, Z)
+      }
+      lp   <- t(matxv(X, draws1int, bmat=TRUE))
+      if(length(fun)) lp <- fun(lp)
+      if(posterior.summary == 'all') return(lp)
+      lpsum <- apply(lp, 2, postsum)
+      if(! cint) return(lpsum)
+      
+      ## When not 'all' the no-cint case was handled above.  Compute HPD
+      ## intervals for each prediction
+      hpd   <- apply(lp, 2, HPDint, prob=cint)
+      return(list(linear.predictors=lpsum, lower=hpd[1,], upper=hpd[2,]))
     }
-  rnam  <- rownames(X)
-  n     <- nrow(X)
+
+    ## What's left is a complex linear predictor request, i.e., for
+    ## a function that must use all the intercepts from each draw
+    
+    xb   <- t(matxv(X, cbind(ints[, iref], betas), bmat=TRUE))
+    ztau <- if(pppo > 0) t(matxv(Z, taus, bmat=TRUE))
+    r    <- matrix(NA, nrow=ndraws, ncol=n)
+    for(i in 1 : ndraws)
+      r[i, ] <- fun(xb[i, ], lptau=ztau[i, ], intercepts=ints[i, ], codes=codes)
+    if(posterior.summary == 'all') return(r)
+    rsum <- apply(r, 2, postsum)
+    if(! cint) return(rsum)
+    hpd  <- apply(r, 2, HPDint, prob=cint)
+    r <- list(linear.predictors=rsum, lower=hpd[1,], upper=hpd[2,])
+    return(r)
+  }
+
+  ## What's left is type=fitted, fitted.ind
 
   ## Get cumulative probability function used
-  link  <- object$link
+  link    <- object$link
   cumprob <- rms::probabilityFamilies[[link]]$cumprob
 
   if(ns == 1) return(cumprob(ints + betas %*% t(X)))  # binary logistic model
 
   cnam  <- cn[1:ns]
-  ylev  <- object$ylevels
   # First intercept corresponds to second distinct Y value
-  if(length(cppo)) cppos <- cppo(ylev[-1])
+  if(pppo > 0) cppos <- cppo(ylevels[-1])
 
-  if(type == 'mean') {
-    if(codes) vals <- 1:length(ylev)
-    else {
-      vals <- as.numeric(ylev)
-      if(any(is.na(vals)))
-         stop('values of response levels must be numeric for type="mean" and codes=FALSE')
-    }
-  }
-
-  ynam <- paste(object$yname, "=", ylev, sep="")
+  ynam <- paste(object$yname, "=", ylevels, sep="")
   PP   <- array(NA, dim=c(ndraws, n, ns),
                 dimnames=list(NULL, rnam, cnam))
   PPeq <- array(NA, dim=c(ndraws, n, ns + 1),
                 dimnames=list(NULL, rnam, ynam))
 
-  M  <- matrix(NA, nrow=ndraws, ncol=n, dimnames=list(NULL, rnam))
-
   for(i in 1 : ndraws) {
-    inti    <- ints[i,]               # alphas for ith draw
-    betai   <- betas[i,,drop=FALSE]
+    inti    <- ints[i, ]               # alphas for ith draw
+    betai   <- betas[i,, drop=FALSE]
+    xb      <- X %*% t(betai)          # n x 1
     if(pppo > 0) {
       taui <- taus[i,, drop=FALSE]
-      zt   <- taui %*% t(Z)           # 1xq qxn = 1xn
-      ## Convenient to think of deviations from proportional odds as
-      ## changes in intercepts
-      inti <- inti + sapply(cppos, '*', zt)
-      }
-    xb      <- betai %*% t(X)         # 1xn
-
-    ## sapply(U (u-vector), '+', V (v-vector)) = v x u matrix
-    ## column j = all V with U[j] added
-    xb      <- sapply(inti, "+", xb)  # n x ns matrix, col j adds intercept j
-
-    P       <- cumprob(xb)            # preserves matrix;  1 x nrow(X)
-    PP[i,,] <- P
-    if(type != 'fitted') {
-      Peq       <- cbind(1, P) - cbind(P, 0)
-      PPeq[i,,] <- Peq
-      if(type == 'mean') M[i, ] <- drop(Peq %*% vals)
-      }
+      zt   <- Z %*% t(taui)            # n x 1
+    }
+    for(j in 1 : n) {
+      ep <- inti + xb[j]    # 1 x ns
+      if(pppo > 0) ep <- ep + cppos * zt[j]
+      ep <- cumprob(ep)
+      PP[i, j, ] <- ep
+      if(type == 'fitted.ind') PPeq[i, j, ] <- c(1., ep) - c(ep, 0.)
+    }
   }
+  
+  if(posterior.summary == 'all')
+    return(switch(type,
+                  fitted     = PP,
+                  fitted.ind = PPeq))
 
-  ps <- switch(posterior.summary, mean=mean, median=median)
   h <- function(x) {
-    s  <- ps(x)
+    s  <- postsum(x)
     ci <- HPDint(x, cint)
     r  <- c(s, ci)
     names(r)[1] <- posterior.summary
@@ -934,24 +1028,22 @@ predict.blrm <- function(object, ...,
   }
 
   ## Similar for a 2-d array
-  s2 <- function(x) {
-    d <- expand.grid(x = rnam, stat=NA, Lower=NA, Upper=NA,
-                     stringsAsFactors=FALSE)
-    for(i in 1 : nrow(d)) {
-      u <- h(x[, d$x[i]])
-      d$stat[i]  <- u[1]
-      d$Lower[i] <- u['Lower']
-      d$Upper[i] <- u['Upper']
-    }
-    names(d)[2] <- Hmisc::upFirst(posterior.summary)
-    d
-  }
-
+  #s2 <- function(x) {
+  #  d <- expand.grid(x = rnam, stat=NA, Lower=NA, Upper=NA,
+  #                   stringsAsFactors=FALSE)
+  #  for(i in 1 : nrow(d)) {
+  #    u <- h(x[, d$x[i]])
+  #    d$stat[i]  <- u[1]
+  #    d$Lower[i] <- u['Lower']
+  #    d$Upper[i] <- u['Upper']
+  #  }
+  #  names(d)[2] <- Hmisc::upFirst(posterior.summary)
+  #  d
+  #}
 
   r <- switch(type,
-              fitted     =  structure(s3(PP), draws=PP),
-              fitted.ind =  structure(s3(PPeq), draws=PPeq),
-              mean       =  structure(s2(M), draws=M))
+              fitted     =  structure(s3(PP),   draws=PP),
+              fitted.ind =  structure(s3(PPeq), draws=PPeq))
 
   class(r) <- c('predict.blrm', class(r))
   r
@@ -1010,7 +1102,7 @@ Mean.blrm <- function(object, codes=FALSE,
     if(length(lptau)) {
       cppos <- cppo(ylevels[-1])   # first intercept corresponds to 2nd Y
       for(j in 1 : ns)
-        xb[, j] <- xb[, j] + cppos[j] * lptau[j]
+        xb[, j] <- xb[, j] + cppos[j] * lptau
       }
 
     if(codes) ylevels <- 1 : length(ylevels)
@@ -1144,7 +1236,7 @@ ExProb.blrm <- function(object,
                 y=NULL, intercepts=numeric(0),
                 ylevels=numeric(0),
                 interceptRef=integer(0), cppo=NULL,
-                cumprob=NULL, yname=NULL) {
+                cumprob=NULL, yname=NULL, codes=NULL) {
     lp <- lp - intercepts[interceptRef]
 
     n <- length(lp)
@@ -1177,7 +1269,8 @@ ExProb.blrm <- function(object,
                      y=NULL, intercepts=intercepts,
                      ylevels=ylevels,
                      interceptRef=object$interceptRef,
-                     cppo=object$cppo, cumprob=cumprob, yname=object$yname)
+                     cppo=object$cppo, cumprob=cumprob, yname=object$yname,
+                     codes=numeric(0))  # codes not used for ExProb
   f
 }
 

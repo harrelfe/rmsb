@@ -2,7 +2,7 @@
 % Please edit documentation in R/blrm.r
 \name{print.predict.blrm}
 \alias{print.predict.blrm}
-\title{print.predict.blrm}
+\title{Print Predictions for \code{\link[=blrm]{blrm()}}}
 \usage{
 \method{print}{predict.blrm}(x, digits = 3, ...)
 }
@@ -14,9 +14,6 @@
 \item{...}{ignored}
 }
 \description{
-Print Predictions for \code{\link[=blrm]{blrm()}}
-}
-\details{
 Prints the summary portion of the results of \code{predict.blrm}
 }
 \author{

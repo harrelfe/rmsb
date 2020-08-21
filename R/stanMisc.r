@@ -530,7 +530,7 @@ distSym <- function(x, prob=0.9, na.rm=FALSE) {
 ##' Bivariate Posterior Contour
 ##'
 ##' Computes coordinates of a highest density contour containing a given probability volume given a sample from a continuous bivariate distribution, and optionally plots.  The default method assumes an elliptical shape, but one can optionally use a kernel density estimator.
-##' Code adapted from `embbook::HPDregionplot`.  See <http://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse>.
+##' Code adapted from `embbook::HPDregionplot`.  See <http://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse/>.
 ##' @param x a numeric vector
 ##' @param y a numeric vector the same length of x
 ##' @param prob main probability coverage (the only one for `method='ellipse'`)
@@ -669,5 +669,6 @@ selectedQr <- function(X, not=NULL, corner=FALSE, center=TRUE) {
     }
   list(X = X, R = R_ast, Rinv = R_ast_inverse, xbar=xbar)
 }
+
 
 utils::globalVariables('est')    # why is this possibly needed?

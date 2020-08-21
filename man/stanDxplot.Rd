@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{stanDxplot}
 \alias{stanDxplot}
-\title{stanDxplot}
+\title{Diagnostic Trace Plots}
 \usage{
 stanDxplot(
   x,
@@ -36,9 +36,6 @@ stanDxplot(
 \code{ggplot2} object if \code{rstan} object was in \code{x}
 }
 \description{
-Diagnostic Trace Plots
-}
-\details{
 For an \code{rms} Bayesian fit object, uses by default the stored posterior draws to check convergence properties of posterior sampling.  If instead \code{rstan=TRUE}, calls the \code{rstan} \code{traceplot} function on the \code{rstan} object inside the \code{rmsb} object, to check properties of posterior sampling.  If \code{rstan=TRUE} and the \code{rstan} object has been removed and \code{previous=TRUE}, attempts to find an already existing plot created by a previous run of the \code{knitr} chunk, assuming it was the \code{plotno} numbered plot of the chunk.
 }
 \author{

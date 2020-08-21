@@ -46,7 +46,6 @@ an \code{rmsb} fit object with expanded posterior draws and diagnostics
 }
 \description{
 Runs an \code{rmsb} package Bayesian fitting function such as \code{blrm} separately for each completed dataset given a multiple imputation result such as one produced by \code{Hmisc::aregImpute}.  Stacks the posterior draws and diagnostics across all imputations, and computes parameter summaries on the stacked posterior draws.
-stackMI
 }
 \author{
 Frank Harrell

@@ -218,22 +218,14 @@ tapply(calpro, endo, median)
 # Now compute estimates and 0.95 HPD intervals assuming PO
 # The first method is exact
 newdata <- data.frame(endo=levels(endo))
-predict(bcalpro, newdata, type='mean')
-# In the future type='quantile' will be added to predict
-# Compute posterior mean/median estimates a different way.
-# These are approximate as they compute the means and medians
-# using the posterior mean parameter values and compute the
-# Y mean/median on them instead of computing the Y mean/median on each
-# posterior draw and then getting the means of these nonlinearly-transformed
-# predicted values
 bar <- Mean(bcalpro)
-Predict(bcalpro, endo, fun=bar)
+predict(bcalpro, newdata, fun=bar)
 quant <- Quantile(bcalpro)
-med <- function(lp) quant(lp=lp)
+med <- function(lp, ...) quant(lp=lp, ...)
 Predict(bcalpro, endo, fun=med)
 ```
 
-But the `contrast` function in `rms` now allows one to get posterior distributions of differences in nonlinearly transformed parameters, as follows.
+The `contrast` function in `rms` now allows one to get posterior distributions of differences in nonlinearly transformed parameters, as follows.
 
 ```{r bcalp2}
 k <- contrast(bcalpro, list(endo=levels(endo)[1]),
@@ -263,11 +255,11 @@ With the constrained partial proportional odds model one can examine for a given
 ```{r calcon,mfrow=c(1,2),h=3.5,w=7.5}
 ys <- seq(100, 2500, by=100)
 k <- contrast(bcalp, list(endo='Moderate or Severe Activity'),
-                     list(endo='No or Mild Activity'),  y=ys)
+                     list(endo='No or Mild Activity'),  ycut=ys)
 xl <- 'Calprotectin Cutoff'
 par(mfrow=c(1,2))
-with(k, plot(y, Contrast, xlab=xl, ylab='log OR',    type='l'))
-with(k, plot(y, PP,       xlab=xl, ylab='P(OR > 1)', type='l'))
+with(k, plot(ycut, Contrast, xlab=xl, ylab='log OR',    type='l'))
+with(k, plot(ycut, PP,       xlab=xl, ylab='P(OR > 1)', type='l'))
 ```
 
 ## Binary Regression with Restricted Cubic Splines
@@ -482,7 +474,7 @@ k[6] + h(1:5) * k[7]   # close to paper
 dat <- data.frame(tx=levels(d$tx))
 # Get posterior mean and 0.95 HPD intervals for treatment
 # effects at all levels of y
-contrast(fp, list(tx='cisplatin'), list(tx='No cisplatin'), y=1:5)
+contrast(fp, list(tx='cisplatin'), list(tx='No cisplatin'), ycut=1:5)
 Predict(fp, tx)
 ```
 

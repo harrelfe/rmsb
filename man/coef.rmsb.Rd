@@ -2,7 +2,7 @@
 % Please edit documentation in R/stanMisc.r
 \name{coef.rmsb}
 \alias{coef.rmsb}
-\title{coef.rmsb}
+\title{Extract Bayesian Summary of Coefficients}
 \usage{
 \method{coef}{rmsb}(object, stat = c("mean", "median", "mode"), ...)
 }
@@ -17,9 +17,6 @@
 a vector of intercepts and regression coefficients
 }
 \description{
-Extract Bayesian Summary of Coefficients
-}
-\details{
 Computes either the posterior mean (default), posterior median, or posterior mode of the parameters in an \code{rms} Bayesian regression model
 }
 \examples{
