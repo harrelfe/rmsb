@@ -100,6 +100,8 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   prevhash <- NULL
   if(length(file) && file.exists(file)) {
     prevfit  <- readRDS(file)
+    if(length(prevfit$cppo))
+      prevfit$cppo <- eval(parse(text=prevfit$cppo))
     prevhash <- prevfit$datahash
     }
 
@@ -347,7 +349,8 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
         names(taus) <- namtau
       }
       names(alphas) <- if(nrp == 1) 'Intercept' else paste0('y>=', ylev[-1])
-      opt <- list(coefficients=c(alphas, betas, taus), cppo=cppo, zbar=zbar,
+      opt <- list(coefficients=c(alphas, betas, taus),
+                  cppo=cppo, zbar=zbar,
                   sigmag=parm[sigmagname], deviance=-2 * g$value,
                   return_code=g$return_code, hessian=g$hessian)
       }
@@ -501,7 +504,16 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 							opt=opt, diagnostics=diagnostics,
               iter=iter, chains=chains, stancode=stancode, datahash=datahash)
 	class(res) <- c('blrm', 'rmsb', 'rms')
-  if(length(file)) saveRDS(res, file, compress='xz')
+  if(length(file)) {
+    ## When the fit object is serialized by saveRDS (same issue with save()),
+    ## any function in the fit object will have a huge environment stored
+    ## with it.  So instead store the function as character strings.
+    if(length(cppo)) {
+      res2      <- res
+      res2$cppo <- deparse(cppo)
+      saveRDS(res2, file, compress='xz')
+    } else saveRDS(res, file, compress='xz')
+  }
   res$rstan <- g
 	res
 }
@@ -845,11 +857,11 @@ predict.blrm <-
   if(pppo == 0) zcppo <- FALSE
   
   if(type == 'x' && pppo == 0)
-    return(rms::predictrms(object, ..., type='x'))
+    return(predictrms(object, ..., type='x'))
   
   if(type %in% c('data.frame', 'terms', 'cterms', 'ccterms',
                  'adjto', 'adjto.data.frame', 'model.frame'))
-    return(rms::predictrms(object, ..., type=type))
+    return(predictrms(object, ..., type=type))
 
   if(pppo > 0) {
     cppo <- object$cppo
@@ -857,12 +869,12 @@ predict.blrm <-
       stop('only constrained partial PO models are implemented at present')
   }
   
-  X     <- rms::predictrms(object, ..., type='x')
+  X     <- predictrms(object, ..., type='x')
   rnam  <- rownames(X)
   n     <- nrow(X)
 
   if(pppo > 0) {
-    Z  <- rms::predictrms(object, ..., type='x', second=TRUE)
+    Z  <- predictrms(object, ..., type='x', second=TRUE)
     nz <- nrow(Z)
     if(n != nz) stop('program logic error 4')
     if(type == 'x' && zcppo) {

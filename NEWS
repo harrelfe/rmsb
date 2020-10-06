@@ -1,4 +1,4 @@
 Changes for 0.0-2
    * Removed @title lines from Roxygen comments
    * Enhanced predict.blrm and changed prediction methods to use it
-	
+   * Changed storage of cppo function in fit object to character strings so as to not have saveRDS serialize it with all its environment data

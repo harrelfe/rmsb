@@ -14,6 +14,7 @@
 ##' @param ... arguments passed to \code{fitter}
 ##' @return an \code{rmsb} fit object with expanded posterior draws and diagnostics
 ##' @author Frank Harrell
+##' @export
 stackMI <-
   function(formula, fitter, xtrans, data,
            n.impute=xtrans$n.impute,
