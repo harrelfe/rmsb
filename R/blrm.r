@@ -18,7 +18,9 @@
 ##' @param na.action default is `na.delete` to remove missings and report on them
 ##' @param priorsd vector of prior standard deviations.  If the vector is shorter than the number of model parameters, it will be repeated until the length equals the number of parametertimes.
 ##' @param priorsdppo vector of prior standard deviations for non-proportional odds parameters.  As with `priorsd` the last element is the only one for which the SD corresponds to the original data scale.
+##' @param iprior specifies whether to use a Dirichlet distribution for the cell probabilities, which induce a more complex prior distribution for the intercepts (`iprior=0`, the default), non-informative priors (`iprior=1`) directly on the intercept parameters,  or to directly use a t-distribution with 3 d.f. and scale parameter `ascale` (`iprior=2`). 
 ##' @param conc the Dirichlet distribution concentration parameter for the prior distribution of cell probabilities at covariate means.  The default is the reciprocal of 0.8 + 0.35 max(k, 3) where k is the number of Y categories.  The default is chosen to make the posterior mean of the intercepts more closely match the MLE.  For optimizing, the concentration parameter is always 1.0 to obtain results very close to the MLE for providing the posterior mode.
+##' @param ascale scale parameter for the t-distribution for priors for the intercepts if `iprior=2`, defaulting to 1.0
 ##' @param psigma defaults to 1 for a half-t distribution with 4 d.f., location parameter `rsdmean` and scale parameter `rsdsd`.  Set `psigma=2` to use the exponential distribution.
 ##' @param rsdmean the assumed mean of the prior distribution of the standard deviation of random effects.  When `psigma=2` this is the mean of an exponential distribution and defaults to 1.  When `psigma=1` this is the mean of the half-t distribution and defaults to zero.
 ##' @param rsdsd applies only to `psigma=1` and is the scale parameter for the half t distribution for the SD of random effects, defaulting to 1.
@@ -67,8 +69,8 @@
 blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
                  data=environment(formula), subset, na.action=na.delete,
 								 priorsd=rep(100, p), priorsdppo=rep(100, pppo),
-                 conc=1./(0.8 + 0.35 * max(k, 3)),
-                 psigma=1, rsdmean=if(psigma == 1) 0 else 1,
+                 iprior=0, conc=1./(0.8 + 0.35 * max(k, 3)),
+                 ascale=1., psigma=1, rsdmean=if(psigma == 1) 0 else 1,
                  rsdsd=1, normcppo=TRUE,
 								 iter=2000, chains=4, refresh=0,
                  progress=if(refresh > 0) 'stan-progress.txt' else '',
@@ -239,10 +241,24 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   priorsd <- rep(priorsd, length=p)
   ## Unconstrained PPO model does not handle censoring
   if(k > 2 && length(ppo) && ! length(cppo)) Y <- as.integer(Y[, 1])
-	d <- list(X=Xs,
-            y=Y,
-            N=n, p=p, k=k, conc=conc,
-            sds=as.array(priorsd))
+  ## Go to trouble of keeping list elements in order from previous
+  ## version so that existing models fitted with iprior=0 will not
+  ## have to be re-run
+	d <- if(iprior == 0)
+         list(X=Xs,
+              y=Y,
+              N=n, p=p, k=k, conc=conc,
+              sds=as.array(priorsd))
+       else
+         list(X=Xs,
+              y=Y,
+              N=n, p=p, k=k, iprior=iprior, ascale=ascale,
+              sds=as.array(priorsd))
+
+  ## Need to negate alphas from Stan if use flat or t-distribution prior
+  ## for intercepts (iprior > 0)
+  
+  alphasign <- if(iprior == 0) 1. else -1.
 
   if(length(cppo)) {
     if(normcppo) {
@@ -283,12 +299,13 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 	if(any(is.na(Xs)) | any(is.na(Y))) stop('program logic error')
 
   unconstrainedppo <- pppo > 0 && length(cppo) == 0
-  fitter <- if(unconstrainedppo) 'lrmcppo' else 'lrmconppo'
+  fitter <- if(unconstrainedppo) 'lrmcppo'
+            else if(iprior == 0) 'lrmconppo' else 'lrmconppot'
   if(unconstrainedppo) d$pposcore <- d$lpposcore <- NULL
   
   if(standata) return(d)
 
-  mod <- stanmodels[[fitter]]
+  mod      <- stanmodels[[fitter]]
   stancode <- rstan::get_stancode(mod)
 
   ## See if previous fit had identical inputs and Stan code
@@ -323,7 +340,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
       al     <- nam[grep('alpha\\[', nam)]
       be     <- nam[grep('beta\\[',  nam)]
       ta     <- nam[grep('tau\\[',   nam)]
-      alphas <- parm[al]
+      alphas <- alphasign * parm[al]
       betas  <- parm[be]
       betas  <- matrix(betas, nrow=1) %*% t(wqrX$Rinv)
       names(betas)  <- atr$colnames
@@ -375,7 +392,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   ga  <- nam[grep('gamma\\[', nam)]
   draws  <- as.matrix(g)
   ndraws <- nrow(draws)
-	alphas <- draws[, al, drop=FALSE]
+	alphas <- alphasign * draws[, al, drop=FALSE]
 	betas  <- draws[, be, drop=FALSE]
   betas  <- betas %*% t(wqrX$Rinv)
 
@@ -486,7 +503,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 							draws=draws, omega=omega,
               gammas=gammas, eps=epsmed,
               param=param, priorsd=priorsd, priorsdppo=priorsdppo,
-              psigma=psigma, rsdmean=rsdmean, rsdsd=rsdsd, conc=conc,
+              psigma=psigma, rsdmean=rsdmean, rsdsd=rsdsd, iprior=iprior,
               notransX=notransXn, notransZ=notransZn, xqrsd=xqrsd,
               N=n, Ncens=Ncens, p=p, pppo=pppo, cppo=cppo, yname=yname,
               ylevels=ylev, freq=numy,
@@ -503,6 +520,8 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
                 list(cluster=if(x) cluster else NULL, n=Nc, name=clustername),
 							opt=opt, diagnostics=diagnostics,
               iter=iter, chains=chains, stancode=stancode, datahash=datahash)
+  if(iprior == 0) res$conc   <- conc
+  if(iprior == 2) res$ascale <- ascale
 	class(res) <- c('blrm', 'rmsb', 'rms')
   if(length(file)) {
     ## When the fit object is serialized by saveRDS (same issue with save()),
@@ -703,11 +722,25 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
   latex <- prType() == 'latex'
 
   if(! length(title))
-    title <- paste('Bayesian',
-                   if(length(x$cppo))        'Constrained',
-                   if(x$pppo > 0)            'Partial',
-                   if(length(x$ylevels) > 2) 'Proportional Odds Ordinal',
-                                             'Logistic Model')
+    title <- paste0('Bayesian',
+                    if(length(x$cppo))        ' Constrained',
+                    if(x$pppo > 0)            ' Partial',
+                    if(length(x$ylevels) > 2) ' Proportional Odds Ordinal',
+                    ' Logistic Model')
+  iprior <- x$iprior
+  if(! length(iprior)) iprior <- 0   ## backward compatibility
+  iprior <- as.character(iprior)
+  conc   <- x[['conc']]
+  ascale <- x$ascale
+  subtitle <-
+    switch(iprior,
+           '0' = paste('Dirichlet Priors With Concentration Parameter',
+                     round(conc, 3), 'for Intercepts'),
+           '1' = 'Non-informative Priors for Intercepts',
+           '2' = paste('t-Distribution Priors With 3 d.f. and Scale Parameter',
+                     round(ascale, 2), 'for Intercepts')
+           )
+  
   z <- list()
   k <- 0
 
@@ -796,7 +829,8 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
   footer <- if(length(x$notransX))
               paste('The following parameters remained separate (where not orthogonalized) during model fitting so that prior distributions could be focused explicitly on them:',
                     paste(x$notransX, collapse=', '))
-  rms::prModFit(x, title=title, z, digits=dec, coefs=coefs, footer=footer, ...)
+  rms::prModFit(x, title=title, z, digits=dec, coefs=coefs, footer=footer,
+                subtitle=subtitle, ...)
 }
 
 ##' Make predictions from a [blrm()] fit

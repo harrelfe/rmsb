@@ -8,10 +8,12 @@ using namespace Rcpp;
 
 
 RcppExport SEXP _rcpp_module_boot_stan_fit4lrmconppo_mod();
+RcppExport SEXP _rcpp_module_boot_stan_fit4lrmconppot_mod();
 RcppExport SEXP _rcpp_module_boot_stan_fit4lrmcppo_mod();
 
 static const R_CallMethodDef CallEntries[] = {
     {"_rcpp_module_boot_stan_fit4lrmconppo_mod", (DL_FUNC) &_rcpp_module_boot_stan_fit4lrmconppo_mod, 0},
+    {"_rcpp_module_boot_stan_fit4lrmconppot_mod", (DL_FUNC) &_rcpp_module_boot_stan_fit4lrmconppot_mod, 0},
     {"_rcpp_module_boot_stan_fit4lrmcppo_mod", (DL_FUNC) &_rcpp_module_boot_stan_fit4lrmcppo_mod, 0},
     {NULL, NULL, 0}
 };

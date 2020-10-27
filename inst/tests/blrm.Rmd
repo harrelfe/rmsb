@@ -524,7 +524,7 @@ Let's generate some data with repeatedly measured outcome per subject where the 
 ```{r re, results='asis'}
 n <- 500   # subjects
 set.seed(2)
-re <- rnorm(n) * 0.25
+re <- rnorm(n) * 0.25   # worked fine also with rnorm(n) * 4
 X <- runif(n)   # baseline covariate, will be duplicated over repeats
 m <- 10         # measurements per subject
 
