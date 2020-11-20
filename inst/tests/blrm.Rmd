@@ -617,7 +617,7 @@ or   <- exp(log(0.65) * (tx[id] == 'b') + re[id])
 y   <- integer(n * m)
 for(j in 1 : (n * m)) {
   p    <- pomodm(p=pa, odds.ratio=or[j])
-	y[j] <- sample(0:5, 1, p, replace=TRUE)
+  y[j] <- sample(0:5, 1, p, replace=TRUE)
 }
 Tx <- tx[id]
 table(Tx, y)
@@ -628,6 +628,11 @@ The first Bayesian proportional odds model fitted is the one that exactly matche
 ```{r noabs,results='asis'}
 bst <- blrm(y ~ Tx + cluster(id), file='bst.rds')
 bst
+```
+
+```{r noabsdx}
+stanDx(bst)
+stanDxplot(bst, 'ALL')
 ```
 
 If `time` were to be added to the above model, you'll see that its regression coefficient is very small ($\hat{\beta}=0.009$ in this case), in alignment with the data generating model.
