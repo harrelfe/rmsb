@@ -10,6 +10,7 @@ output:
     gallery: true
     highlight: tango
     use_bookdown: true
+    embed_fonts: false
 bibliography: harrelfe.bib
 csl: apa-annotated-bibliography.csl
 link-citations: yes
@@ -314,6 +315,12 @@ Draw partial effect plots with 0.95 HPD intervals.  Point estimates are posterio
 
 ```{r peffect}
 ggplot(Predict(bsup))
+```
+
+Compute estimated mortality probabilities at all levels of `dzgroup` adjusting covariates to medians/modes.  Need `funint=FALSE` to tell `Predict` that `fun` is a simple 1-1 function of the linear predictor (unlike `Mean`, `Quantile`, etc.).
+
+```{r peffect2}
+Predict(bsup, dzgroup, fun=plogis, funint=FALSE)
 ```
 
 Draw a nomogram from posterior mode parameter values.

@@ -930,8 +930,8 @@ predict.blrm <-
   ns      <- object$non.slopes
   tauinfo <- object$tauInfo
 
-  if(ns == 1 && length(fun))
-    stop('specifying fun= makes no sense with a binary response')
+  if(ns == 1 && length(fun) && funint)
+    stop('specifying fun= with funint=TRUE makes no sense with a binary response')
 
   draws   <- object$draws
   ndraws  <- nrow(draws)

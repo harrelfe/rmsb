@@ -1,7 +1,7 @@
 Package: rmsb
 Title: Bayesian Regression Modeling Strategies
 Version: 0.0.2
-Date: 2020-10-05
+Date: 2021-02-27
 Authors@R: 
     c(person(given = "Frank",
            family = "Harrell",
