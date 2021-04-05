@@ -43,7 +43,7 @@
 ##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the `keepsep` argument will have their original SDs.
 ##' @examples
 ##' \dontrun{
-##'   getHdata(Titanic3)
+##'   getHdata(titanic3)
 ##'   dd <- datadist(titanic3); options(datadist='dd')
 ##'   f <- blrm(survived ~ (rcs(age, 5) + sex + pclass)^2, data=titanic3)
 ##'   f                   # model summary using print.blrm

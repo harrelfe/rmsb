@@ -118,7 +118,7 @@ See \url{https://hbiostat.org/R/rms/blrm.html} for multiple examples with result
 }
 \examples{
 \dontrun{
-  getHdata(Titanic3)
+  getHdata(titanic3)
   dd <- datadist(titanic3); options(datadist='dd')
   f <- blrm(survived ~ (rcs(age, 5) + sex + pclass)^2, data=titanic3)
   f                   # model summary using print.blrm
