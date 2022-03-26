@@ -1,6 +1,7 @@
-Changes for 0.1-0 (2021-05-03)
+Changes for 0.1-0 (2022-04-01)
    * blrm: got around bug in model.response not keeping class Ocens
    * soprobMarkovOrdPost: removed since Hmisc has soprobMarkovOrdm
+   * lrmconppot.stan: removed redundant pi simplex (thanks Mark Jones <mark.jones1@sydney.edu.au>
 
 Changes for 0.0-2 (2021-02-27)
    * Removed @title lines from Roxygen comments

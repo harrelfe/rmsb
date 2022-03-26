@@ -96,7 +96,6 @@ parameters {
   ordered[k - 1] alpha;
   vector[p] beta; // coefficients on X
   vector[q] tau;  // coefficients on Z
-  simplex[k] pi;  // category probabilities for a person w/ average predictors
 	vector[Nc] gamma_raw;   // unscaled random effects
 	real<lower = 0> sigmag[Nc == 0 ? 0 : 1]; // SD of random effects
 }
