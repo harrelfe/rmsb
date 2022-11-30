@@ -37,7 +37,7 @@ a 2-column matrix with x and y coordinates unless \code{pl=TRUE} in which case a
 }
 \description{
 Computes coordinates of a highest density contour containing a given probability volume given a sample from a continuous bivariate distribution, and optionally plots.  The default method assumes an elliptical shape, but one can optionally use a kernel density estimator.
-Code adapted from \code{embbook::HPDregionplot}.  See \url{http://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse/}.
+Code adapted from \code{embbook::HPDregionplot}.  See \url{https://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse/}.
 }
 \author{
 Ben Bolker and Frank Harrell

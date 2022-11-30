@@ -1,4 +1,10 @@
-Changes for 0.1-0 (2022-04-01)
+Changes for 0.2-0 (2022-11-25)
+   * blrm: added support for cmdstan and cmdstanr package using backend=
+   * When using cmdstan uses bayesplot package for pairs plots
+   * stanDx: new code for cmdstan diagnostics
+   * stackMI: corrected erroneous implementation of file= where it was only applying to one of the imputations; also handled generally the conversion of functions in fit object to character strings for efficient serializing
+
+Changes for 0.1-0 (2022-04-12)
    * blrm: got around bug in model.response not keeping class Ocens
    * soprobMarkovOrdPost: removed since Hmisc has soprobMarkovOrdm
    * lrmconppot.stan: removed redundant pi simplex (thanks Mark Jones <mark.jones1@sydney.edu.au>

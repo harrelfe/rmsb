@@ -21,7 +21,9 @@ blrm(
   rsdmean = if (psigma == 1) 0 else 1,
   rsdsd = 1,
   normcppo = TRUE,
+  backend = c("rstan", "cmdstan"),
   iter = 2000,
+  warmup = iter/2,
   chains = 4,
   refresh = 0,
   progress = if (refresh > 0) "stan-progress.txt" else "",
@@ -71,11 +73,15 @@ blrm(
 
 \item{normcppo}{set to \code{FALSE} to leave the \code{cppo} function as-is without automatically centering and scaling the result}
 
-\item{iter}{number of posterior samples per chain for \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} to run}
+\item{backend}{set to \code{cmdstan} to use \code{cmdstan} through the R \code{cmdstanr} package instead of the default \code{rstan}.  You can also specify this with a global option \code{rmsb.backend}.}
+
+\item{iter}{number of posterior samples per chain for \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} to run, counting warmups}
+
+\item{warmup}{number of warmup iterations to discard.  Default is \code{iter}/2.}
 
 \item{chains}{number of separate chains to run}
 
-\item{refresh}{see \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}}.  The default is 0, indicating that no progress notes are output.  If \code{refresh > 0} and \code{progress} is not \code{''}, progress output will be appended to file \code{progress}.  The default file name is \code{'stan-progress.txt'}.}
+\item{refresh}{see \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} and \code{\link[cmdstanr:model-method-sample]{cmdstanr::sample()}}.  The default is 0, indicating that no progress notes are output.  If \code{refresh > 0} and \code{progress} is not \code{''}, progress output will be appended to file \code{progress}.  The default file name is \code{'stan-progress.txt'}.}
 
 \item{progress}{see \code{refresh}.  Defaults to \code{''} if \code{refresh = 0}.  Note: If running interactively but not under RStudio, \code{rstan} will open a browser window for monitoring progress.}
 
@@ -85,7 +91,7 @@ blrm(
 
 \item{loo}{set to \code{FALSE} to not run \code{loo} and store its result as object \code{loo} in the returned object.  \code{loo} defaults to \code{FALSE} if the sample size is greater than 1000, as \code{loo} requires the per-observation likelihood components, which creates a matrix N times the number of posterior draws.}
 
-\item{ppairs}{set to a file name to run \code{rstan} \code{pairs} and store the resulting png plot there.  Set to \code{TRUE} instead to directly plot these diagnostics.  The default is not to run \code{pairs}.}
+\item{ppairs}{set to a file name to run \code{rstan} \code{pairs} or, if \code{backend='cmdstan'} \code{bayesplot::mcmc_pairs} and store the resulting png plot there.  Set to \code{TRUE} instead to directly plot these diagnostics.  The default is not to run pair plots.}
 
 \item{method}{set to \code{'optimizing'} to run the Stan optimizer and not do posterior sampling, \code{'both'} (the default) to run both the optimizer and posterior sampling, or \code{'sampling'} to run only the posterior sampling and not compute posterior modes. Running \code{optimizing} is a way to obtain maximum likelihood estimates and allows one to quickly study the effect of changing the prior distributions.  When \code{method='optimizing'} is used the result returned is not a standard \code{\link[=blrm]{blrm()}} object but is instead the parameter estimates, -2 log likelihood, and optionally the Hession matrix (if you specify \code{hessian=TRUE} in ...).  When \code{method='both'} is used, \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} and \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}} are both run, and parameter estimates (posterior modes) from \code{optimizing} are stored in a matrix \code{param} in the fit object, which also contains the posterior means and medians, and other results from \code{optimizing} are stored in object \code{opt} in the \code{\link[=blrm]{blrm()}} fit object.  When random effects are present, \code{method} is automatically set to \code{'sampling'} as maximum likelihood estimates without marginalizing over the random effects do not make sense.}
 
@@ -102,10 +108,10 @@ blrm(
 \item{...}{passed to \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}.  The \code{seed} parameter is a popular example.}
 }
 \value{
-an \code{rms} fit object of class \code{blrm}, \code{rmsb}, \code{rms} that also contains \code{rstan} results under the name \code{rstan}.  In the \code{rstan} results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by \code{\link[=blrm]{blrm()}}.  With \code{method='optimizing'} a class-less list is return with these elements: \code{coefficients} (MLEs), \code{beta} (non-intercept parameters on the QR decomposition scale), \code{deviance} (-2 log likelihood), \code{return_code} (see \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}), and, if you specified \code{hessian=TRUE} to \code{\link[=blrm]{blrm()}}, the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the \code{xqrsd} object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the \code{keepsep} argument will have their original SDs.
+an \code{rms} fit object of class \code{blrm}, \code{rmsb}, \code{rms} that also contains \code{rstan} or \code{cmdstanr} results under the name \code{rstan}.  In the \code{rstan} results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by \code{\link[=blrm]{blrm()}}.  With \code{method='optimizing'} a class-less list is return with these elements: \code{coefficients} (MLEs), \code{beta} (non-intercept parameters on the QR decomposition scale), \code{deviance} (-2 log likelihood), \code{return_code} (see \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}), and, if you specified \code{hessian=TRUE} to \code{\link[=blrm]{blrm()}}, the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the \code{xqrsd} object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the \code{keepsep} argument will have their original SDs.  The returned element \code{sampling_time} is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
 }
 \description{
-Uses \code{rstan} with pre-compiled Stan code to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of \code{\link[=blrm]{blrm()}} for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero, and the vector of prior standard deviations is given in \code{priorsd}.  These priors are for the qr-projected design matrix elements, except that the very last element is not changed.  So if one has a single non-interactive linear or binary variable for which a skeptical prior is designed, put that variable last in the model.
+Uses \code{rstan} with pre-compiled Stan code, or \code{cmdstan} to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of \code{\link[=blrm]{blrm()}} for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero, and the vector of prior standard deviations is given in \code{priorsd}.  These priors are for the qr-projected design matrix elements, except that the very last element is not changed.  So if one has a single non-interactive linear or binary variable for which a skeptical prior is designed, put that variable last in the model.
 }
 \details{
 The partial proportional odds model of Peterson and Harrell (1990) is implemented, and is invoked when the user specifies a second model formula as the \code{ppo} argument.  This formula has no left-hand-side variable, and has right-side variables that are a subset of those in \code{formula} specifying for which predictors the proportional odds assumption is relaxed.
@@ -113,6 +119,8 @@ The partial proportional odds model of Peterson and Harrell (1990) is implemente
 The Peterson and Harrell (1990) constrained partial proportional odds is also implemented, and is usually preferred to the above unconstrained PPO model as it adds a vector of coefficients instead of a matrix of coefficients.  In the constrained PPO model the user provides a function \code{cppo} that computes a score for all observed values of the dependent variable.  For example with a discrete ordinal outcome \code{cppo} may return a value of 1.0 for a specific value of Y and zero otherwise.  That will result in a departure from the proportional odds assumption for just that one level of Y.  The value returned by \code{cppo} at the lowest Y value is never used in any case.
 
 \code{\link[=blrm]{blrm()}} also handles single-level hierarchical random effects models for the case when there are repeated measurements per subject which are reflected as random intercepts, and a different experimental model that allows for AR(1) serial correlation within subject.  For both setups, a \code{cluster} term in the model signals the existence of subject-specific random effects.
+
+When using the \code{cmdstan} backend, \code{cmdstanr} will need to compile the Stan code once per computer, only recompiling the code when the Stan source code changes.  By default the compiled code is stored in directory \code{.rmsb} under your home directory.  Specify \code{options(rmsbdir=)} to specify a different location.  You should specify \code{rmsbdir} to be in a project-specific location if you want to archive code for old projects.
 
 See \url{https://hbiostat.org/R/rms/blrm.html} for multiple examples with results.
 }
@@ -135,7 +143,8 @@ See \url{https://hbiostat.org/R/rms/blrm.html} for multiple examples with result
   plot(nomogram(f, ...)) # plot nomogram using posterior mean parameters
 
   # Fit a random effects model to handle multiple observations per
-  # subject ID
+  # subject ID using cmdstan
+  # options(rmsb.backend='cmdstan')
   f <- blrm(outcome ~ rcs(age, 5) + sex + cluster(id), data=mydata)
 }
 }

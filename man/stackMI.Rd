@@ -8,13 +8,14 @@ stackMI(
   formula,
   fitter,
   xtrans,
-  data,
+  data = NULL,
   n.impute = xtrans$n.impute,
-  dtrans,
-  derived,
-  subset,
+  dtrans = NULL,
+  derived = NULL,
+  subset = NULL,
   refresh = 0,
   progress = if (refresh > 0) "stan-progress.txt" else "",
+  file = NULL,
   ...
 )
 }

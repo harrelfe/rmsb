@@ -1,12 +1,14 @@
 ##' Bayesian Binary and Ordinal Logistic Regression
 ##'
-##' Uses `rstan` with pre-compiled Stan code to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of [blrm()] for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero, and the vector of prior standard deviations is given in `priorsd`.  These priors are for the qr-projected design matrix elements, except that the very last element is not changed.  So if one has a single non-interactive linear or binary variable for which a skeptical prior is designed, put that variable last in the model.
+##' Uses `rstan` with pre-compiled Stan code, or `cmdstan` to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of [blrm()] for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero, and the vector of prior standard deviations is given in `priorsd`.  These priors are for the qr-projected design matrix elements, except that the very last element is not changed.  So if one has a single non-interactive linear or binary variable for which a skeptical prior is designed, put that variable last in the model.
 ##'
 ##' The partial proportional odds model of Peterson and Harrell (1990) is implemented, and is invoked when the user specifies a second model formula as the `ppo` argument.  This formula has no left-hand-side variable, and has right-side variables that are a subset of those in `formula` specifying for which predictors the proportional odds assumption is relaxed.
 ##'
 ##' The Peterson and Harrell (1990) constrained partial proportional odds is also implemented, and is usually preferred to the above unconstrained PPO model as it adds a vector of coefficients instead of a matrix of coefficients.  In the constrained PPO model the user provides a function `cppo` that computes a score for all observed values of the dependent variable.  For example with a discrete ordinal outcome `cppo` may return a value of 1.0 for a specific value of Y and zero otherwise.  That will result in a departure from the proportional odds assumption for just that one level of Y.  The value returned by `cppo` at the lowest Y value is never used in any case.
 ##'
 ##' [blrm()] also handles single-level hierarchical random effects models for the case when there are repeated measurements per subject which are reflected as random intercepts, and a different experimental model that allows for AR(1) serial correlation within subject.  For both setups, a `cluster` term in the model signals the existence of subject-specific random effects.
+##'
+##' When using the `cmdstan` backend, `cmdstanr` will need to compile the Stan code once per computer, only recompiling the code when the Stan source code changes.  By default the compiled code is stored in directory `.rmsb` under your home directory.  Specify `options(rmsbdir=)` to specify a different location.  You should specify `rmsbdir` to be in a project-specific location if you want to archive code for old projects.
 ##'
 ##' See <https://hbiostat.org/R/rms/blrm.html> for multiple examples with results.
 ##' @param formula a R formula object that can use `rms` package enhancements such as the restricted interaction operator
@@ -25,14 +27,16 @@
 ##' @param rsdmean the assumed mean of the prior distribution of the standard deviation of random effects.  When `psigma=2` this is the mean of an exponential distribution and defaults to 1.  When `psigma=1` this is the mean of the half-t distribution and defaults to zero.
 ##' @param rsdsd applies only to `psigma=1` and is the scale parameter for the half t distribution for the SD of random effects, defaulting to 1.
 ##' @param normcppo set to `FALSE` to leave the `cppo` function as-is without automatically centering and scaling the result
-##' @param iter number of posterior samples per chain for [rstan::sampling()] to run
+##' @param backend set to `cmdstan` to use `cmdstan` through the R `cmdstanr` package instead of the default `rstan`.  You can also specify this with a global option `rmsb.backend`.
+##' @param iter number of posterior samples per chain for [rstan::sampling()] to run, counting warmups
+##' @param warmup number of warmup iterations to discard.  Default is `iter`/2.
 ##' @param chains number of separate chains to run
-##' @param refresh see [rstan::sampling()].  The default is 0, indicating that no progress notes are output.  If `refresh > 0` and `progress` is not `''`, progress output will be appended to file `progress`.  The default file name is `'stan-progress.txt'`.
+##' @param refresh see [rstan::sampling()] and [cmdstanr::sample()].  The default is 0, indicating that no progress notes are output.  If `refresh > 0` and `progress` is not `''`, progress output will be appended to file `progress`.  The default file name is `'stan-progress.txt'`.
 ##' @param progress see `refresh`.  Defaults to `''` if `refresh = 0`.  Note: If running interactively but not under RStudio, `rstan` will open a browser window for monitoring progress.
 ##' @param x set to `FALSE` to not store the design matrix in the fit.  `x=TRUE` is needed if running `blrmStats` for example.
 ##' @param y set to `FALSE` to not store the response variable in the fit
 ##' @param loo set to `FALSE` to not run `loo` and store its result as object `loo` in the returned object.  `loo` defaults to `FALSE` if the sample size is greater than 1000, as `loo` requires the per-observation likelihood components, which creates a matrix N times the number of posterior draws.
-##' @param ppairs set to a file name to run `rstan` `pairs` and store the resulting png plot there.  Set to `TRUE` instead to directly plot these diagnostics.  The default is not to run `pairs`.
+##' @param ppairs set to a file name to run `rstan` `pairs` or, if `backend='cmdstan'` `bayesplot::mcmc_pairs` and store the resulting png plot there.  Set to `TRUE` instead to directly plot these diagnostics.  The default is not to run pair plots.
 ##' @param method set to `'optimizing'` to run the Stan optimizer and not do posterior sampling, `'both'` (the default) to run both the optimizer and posterior sampling, or `'sampling'` to run only the posterior sampling and not compute posterior modes. Running `optimizing` is a way to obtain maximum likelihood estimates and allows one to quickly study the effect of changing the prior distributions.  When `method='optimizing'` is used the result returned is not a standard [blrm()] object but is instead the parameter estimates, -2 log likelihood, and optionally the Hession matrix (if you specify `hessian=TRUE` in ...).  When `method='both'` is used, [rstan::sampling()] and [rstan::optimizing()] are both run, and parameter estimates (posterior modes) from `optimizing` are stored in a matrix `param` in the fit object, which also contains the posterior means and medians, and other results from `optimizing` are stored in object `opt` in the [blrm()] fit object.  When random effects are present, `method` is automatically set to `'sampling'` as maximum likelihood estimates without marginalizing over the random effects do not make sense.
 ##' @param inito intial value for optimization.  The default is the `rstan` default `'random'`.  Frequently specifying `init=0` will benefit when the number of distinct Y categories grows or when using `ppo` hence 0 is the default for that.
 ##' @param inits initial value for sampling, defaults to `inito`
@@ -40,7 +44,7 @@
 ##' @param debug set to `TRUE` to output timing and progress information to /tmp/debug.txt
 ##' @param file a file name for a `saveRDS`-created file containing or to contain the saved fit object.  If `file` is specified and the file does not exist, it will be created right before the fit object is returned, less the large `rstan` object.  If the file already exists, its stored `md5` hash string `datahash` fit object component is retrieved and compared to that of the current `rstan` inputs.  If the data to be sent to `rstan`, the priors, and all sampling and optimization options and stan code are identical, the previously stored fit object is immediately returned and no new calculatons are done.
 ##' @param ... passed to [rstan::optimizing()].  The `seed` parameter is a popular example.
-##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the `keepsep` argument will have their original SDs.
+##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` or `cmdstanr` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the `keepsep` argument will have their original SDs.  The returned element `sampling_time` is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
 ##' @examples
 ##' \dontrun{
 ##'   getHdata(titanic3)
@@ -60,7 +64,8 @@
 ##'   plot(nomogram(f, ...)) # plot nomogram using posterior mean parameters
 ##'
 ##'   # Fit a random effects model to handle multiple observations per
-##'   # subject ID
+##'   # subject ID using cmdstan
+##'   # options(rmsb.backend='cmdstan')
 ##'   f <- blrm(outcome ~ rcs(age, 5) + sex + cluster(id), data=mydata)
 ##' }
 ##' @author Frank Harrell and Ben Goodrich
@@ -71,8 +76,8 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 								 priorsd=rep(100, p), priorsdppo=rep(100, pppo),
                  iprior=0, conc=1./(0.8 + 0.35 * max(k, 3)),
                  ascale=1., psigma=1, rsdmean=if(psigma == 1) 0 else 1,
-                 rsdsd=1, normcppo=TRUE,
-								 iter=2000, chains=4, refresh=0,
+                 rsdsd=1, normcppo=TRUE, backend=c('rstan', 'cmdstan'),
+								 iter=2000, warmup=iter/2, chains=4, refresh=0,
                  progress=if(refresh > 0) 'stan-progress.txt' else '',
 								 x=TRUE, y=TRUE, loo=n <= 1000, ppairs=NULL,
                  method=c('both', 'sampling', 'optimizing'),
@@ -80,8 +85,18 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
                  standata=FALSE, file=NULL, debug=FALSE,
                  ...) {
 
-  call   <- match.call()
-  method <- match.arg(method)
+  call    <- match.call()
+  method  <- match.arg(method)
+  backend <- if(missing(backend)) getOption('rmsb.backend', 'rstan') else match.arg(backend)
+
+  if(backend == 'cmdstan') {
+    rmsbdir <- getOption('rmsbdir')
+    if(! length(rmsbdir)) {
+      rmsbdir <- '~/.rmsb'
+      message('Compiled Stan code will be stored in ~/.rmsb.  Use options(rmsbdir=) to override.')
+    }
+    dir.create(rmsbdir, showWarnings=FALSE)
+  }
 
   ## Use modelData because model.frame did not work
   ## correctly when called the second time for ppo, and because of
@@ -307,11 +322,19 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   
   if(standata) return(d)
 
-  mod      <- stanmodels[[fitter]]
-  stancode <- rstan::get_stancode(mod)
+  switch(backend,
+         rstan = {
+          mod      <- stanmodels[[fitter]]
+          stancode <- rstan::get_stancode(mod) },
+         cmdstan = {
+          sfile     <- file.path(system.file(package='rmsb'), 'stan',
+                                  paste0(fitter, '.stan'))
+          stancode <- readLines(sfile) }
+  )
 
   ## See if previous fit had identical inputs and Stan code
-  hashobj  <- list(d, inito, inits, iter, chains, loo, ppairs, method,
+  ## If using cmdstand, no need to even compile the code if so
+  hashobj  <- list(d, inito, inits, iter, warmup, chains, loo, ppairs, method,
                    stancode, ...)
   datahash <- digest::digest(hashobj)
   if(length(prevhash) && prevhash == datahash) return(prevfit)
@@ -322,22 +345,35 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 
   opt <- parm <- taus <- NULL
 
-  sigmagname <- 'sigmag[1]'
+  sigmagname <- if(length(cluster)) 'sigmag[1]'
+
+  if(backend == 'cmdstan') {
+    require(cmdstanr)
+    mod <- suppressMessages(cmdstan_model(sfile, dir=rmsbdir))
+  }
+
+# cmdstan needs a JSON method for components of data
+# Get around this for Ocens variable by removing its class
+d$y <- unclass(d$y)
 
   if(method != 'sampling') {
     # Temporarily make concentration parameter = 1.0
     d$conc <- 1.0
 
-    g <- rstan::optimizing(mod, data=d, init=inito, ...)
+    g <- switch(backend,
+                rstan   = rstan::optimizing(mod, data=d, init=inito, ...),
+                cmdstan = mod$optimize(data=d, init=if(! all(inito == 'random')) inito, ...)   )
+
     d$conc <- conc   # restore
-    if(g$return_code != 0) {
-      warning(paste('Optimizing did not work; return code', g$return_code,
+    rc <- switch(backend, rstan=g$return_code, cmdstan=g$return_codes())
+    if(rc != 0) {
+      warning(paste('Optimizing did not work; return code', rc,
                     '\nPosterior modes not computed'))
       opt <- list(coefficients=NULL,
                   sigmag=NA, deviance=NA,
-                  return_code=g$return_code, hessian=NULL)
+                  return_code=rc, hessian=NULL)
     } else {
-      parm   <- g$par
+      parm   <- switch(backend, rstan = g$par, cmdstan = g$mle())
       nam    <- names(parm)
       al     <- nam[grep('alpha\\[', nam)]
       be     <- nam[grep('beta\\[',  nam)]
@@ -350,6 +386,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
       if(pppo) {
         if(length(cppo)) { # constrained PPO model
           taus <- matrix(parm[ta], nrow=pppo, ncol=1)
+  
           taus <- wqrZ$Rinv %*% taus
           alphas <- alphas - d$pposcore[-1] * sum(taus * zbar)
           # zbartau <- sum(taus * zbar)    # longhand
@@ -370,8 +407,10 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
       names(alphas) <- if(nrp == 1) 'Intercept' else paste0('y>=', ylev[-1])
       opt <- list(coefficients=c(alphas, betas, taus),
                   cppo=cppo, zbar=zbar,
-                  sigmag=parm[sigmagname], deviance=-2 * g$value,
+                  sigmag=parm[sigmagname],
+                  deviance=-2 * switch(backend, rstan = g$value, cmdstan = g$lp()),
                   return_code=g$return_code, hessian=g$hessian)
+      # cmdstan does not yet have hessian
       }
     if(method == 'optimizing') return(opt)
   }
@@ -379,20 +418,36 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   if(progress != '') sink(progress, append=TRUE)
 
   debug(1)
-  exclude <- c('sigmaw', 'gamma_raw', 'pi')
-  if(! loo) exclude <- c(exclude, 'log_lik')
-  g <- rstan::sampling(mod, pars=exclude, include=FALSE,
-                       data=d, iter=iter, chains=chains, refresh=refresh,
-                       init=inits, ...)
-
+  incpars <- c('alpha', 'beta', if(length(cluster)) c('gamma', 'sigmag'), if(pppo) 'tau', if(backend == 'rstan' & loo) 'log_lik')
+  stime <- system.time(
+    g <- switch(backend,
+                rstan   = rstan::sampling(mod, pars=incpars,
+                              data=d, iter=iter, warmup=warmup, chains=chains, refresh=refresh,
+                              init=inits, ...),
+                cmdstan = mod$sample(data=d, iter_sampling=iter - warmup, 
+                            iter_warmup=warmup, chains=chains,
+                            refresh=refresh, init=if(! all(inits == 'random')) inits, ...) )  )
+  sampling_time <- unname(stime['elapsed'])
   debug(2)
 
   if(progress != '') sink()
-	nam <- names(g)
+
+  draws <- switch(backend, 
+                  cmdstan = {
+                    draws <- g$draws()
+                    nam   <- dimnames(draws)[[3]]
+                    regx  <- paste(paste0('^', incpars, '\\['), collapse='|')   # make "or" regular expression
+                    nam   <- nam[grep(regx, nam)]
+                    # Combine all chains
+                    matrix(draws[, , nam], ncol=length(nam), dimnames=list(NULL, nam)) },
+                  rstan   = {
+                    nam   <- names(g)
+                    as.matrix(g) }    )
+
 	al  <- nam[grep('alpha\\[', nam)]
-	be  <- nam[grep('beta\\[', nam)]
+	be  <- nam[grep('beta\\[',  nam)]
   ga  <- nam[grep('gamma\\[', nam)]
-  draws  <- as.matrix(g)
+
   ndraws <- nrow(draws)
 	alphas <- alphasign * draws[, al, drop=FALSE]
 	betas  <- draws[, be, drop=FALSE]
@@ -447,20 +502,34 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   epsmed <- NULL
 
   debug(5)
-  diagnostics <-
-		tryCatch(rstan::summary(g, pars=c(al, be, clparm), probs=NULL),
-             error=function(...) list(fail=TRUE))
-  if(itfailed(diagnostics)) {
-    warning('rstan::summary failed; see fit component diagnostics')
-    diagnostics <- list(pars=c(al, be, clparm), failed=TRUE)
-  } else diagnostics <- diagnostics$summary[,c('n_eff', 'Rhat')]
+  switch(backend,
+    rstan = {
+      diagnostics <-
+		    tryCatch(rstan::summary(g, pars=c(al, be, clparm), probs=NULL),
+                 error=function(...) list(fail=TRUE))
+        if(itfailed(diagnostics)) {
+        warning('rstan::summary failed; see fit component diagnostics')
+        diagnostics <- list(pars=c(al, be, clparm), failed=TRUE)
+        } else diagnostics <- diagnostics$summary[,c('n_eff', 'Rhat')]
+      },
+    cmdstan = {
+      vsum <- setdiff(incpars, 'gamma')
+      dm   <- capture.output(g$cmdstan_diagnose())[-(1:2)]  # remove csv temp file descriptions
+      diagnostics <- list(message            = dm,
+                          diagnostic_summary = g$diagnostic_summary(),
+                          summary            = as.data.frame(g$summary(variables=vsum)))
+       }  )
 
   debug(6)
+  
   if(length(ppairs)) {
+    if(backend == 'cmdstan') require(bayesplot)
     if(is.character(ppairs)) png(ppairs, width=1000, height=1000, pointsize=11)
-    pairs(g, pars=c(al, be, clparm))
+    switch(backend,
+      rstan   = pairs(g, pars=c(al[1], be, clparm)),
+      cmdstan = print(mcmc_pairs(g$draws(c(al[1], be, clparm)), np=nuts_params(g))) )
     if(is.character(ppairs)) dev.off()
-    }
+  }
 
   debug(7)
 	# Back-scale to original data scale
@@ -492,11 +561,12 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   Loo <- lootime <- NULL
   if(loo) {
     lootime <- system.time(
-      Loo <- tryCatch(rstan::loo(g), error=function(...) list(fail=TRUE)))
+                Loo <- tryCatch(switch(backend, rstan=rstan::loo(g), cmdstan=g$loo()),
+                                error=function(...) list(fail=TRUE)))
     if(itfailed(Loo)) {
       warning('loo failed; try running on loo(stanGet(fit object)) for more information')
       Loo <- NULL
-      }
+    } 
   }
 
   debug(9)
@@ -521,7 +591,8 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
               clusterInfo=if(length(cluster))
                 list(cluster=if(x) cluster else NULL, n=Nc, name=clustername),
 							opt=opt, diagnostics=diagnostics,
-              iter=iter, chains=chains, stancode=stancode, datahash=datahash)
+              iter=iter, chains=chains, stancode=stancode, datahash=datahash,
+              backend=backend, sampling_time=sampling_time)
   if(iprior == 0) res$conc   <- conc
   if(iprior == 2) res$ascale <- ascale
 	class(res) <- c('blrm', 'rmsb', 'rms')
@@ -781,11 +852,14 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
   ce    <- if(sum(Ncens) > 0) sum(Ncens)
   ced   <- if(sum(Ncens) > 0)
              paste0(paste(c(L, R, int), collapse=', '))
+  stime <- if(length(x$sampling_time)) paste0(round(x$sampling_time, 1), 's')
+
   misc <- rms::reListclean(Obs             = x$N,
                       Censored        = ce,
                       ' '             = ced,
                       Draws           = nrow(x$draws),
                       Chains          = x$chains,
+                      Time            = stime,
                       Imputations     = x$n.impute,
                       p               = x$p,
                       'Cluster on'    = ci$name,

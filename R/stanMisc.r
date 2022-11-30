@@ -1,3 +1,4 @@
+
 ##' Print Stan Diagnostics
 ##'
 ##' Retrieves the effect samples sizes and Rhats computed after a fitting function ran `rstan`, and prepares it for printing.  If the fit was created by `stackImpute`, the diagnostics for all imputations are printed (separately).
@@ -25,23 +26,41 @@ stanDx <- function(object) {
 	cat('For each parameter, n_eff is a crude measure of effective sample size',
 			'and Rhat is the potential scale reduction factor on split chains',
 			'(at convergence, Rhat=1)\n', sep='\n')
-  if(n.impute == 1) {
-    d[, 'n_eff']  <- round(d[, 'n_eff'])
-    d[, 'Rhat']   <- round(d[, 'Rhat'], 3)
-    rownames(d)   <- colnames(cbind(draws, object$omega))
-    return(d)
-  } else {
+
+g <- switch(object$backend,
+            rstan = function(d, imp) {
+              d[, 'n_eff']  <- round(d[, 'n_eff'])
+              d[, 'Rhat']   <- round(d[, 'Rhat'], 3)
+              nams          <- colnames(cbind(draws, object$omega))
+              rownames(d)   <- if(n.impute == 1) nams else paste0(paste0('Imputation ', imp, ': '), nams)
+              d
+            },
+            cmdstan = function(d, imp) {
+              if(n.impute > 1) cat('\nImputation', imp, '\n\n')
+              cat(d$message, sep='\n')
+              ds <- d$diagnostic_summary
+              if(any(ds$num_divergent > 0)) cat('Divergent samples:', ds$num_divergent, '\n')
+              if(any(ds$num_max_treedepth > 0)) cat('Samples exceeding maximum tree dept:', ds$num_max_treedepth, '\n')
+              cat('\nEBFMI:', round(ds$ebfmi, 3), '\n\n')
+              w <- as.data.frame(d$summary[, c('variable', 'rhat', 'ess_bulk', 'ess_tail')])
+              print(with(w, data.frame(Parameter=variable, Rhat=round(rhat, 3),
+                                      'ESS bulk'=round(ess_bulk), 'ESS tail'=round(ess_tail),
+                                      check.names=FALSE)))
+              invisible()
+            } )
+
+  if(n.impute == 1) return(g(d))
+
+  if(object$backend == 'rstan') {
     D <- NULL
     for(i in 1 : n.impute) {
       dx <- d[[i]]
-      dx[, 'n_eff']  <- round(dx[, 'n_eff'])
-      dx[, 'Rhat' ]  <- round(dx[, 'Rhat'], 3)
-      nams <- colnames(cbind(draws, object$omega))
-      rownames(dx)   <- paste0(paste0('Imputation ', i, ': '), nams)
-      D <- rbind(D, dx)
-      }
+      D <- rbind(D, g(dx, i))
+    }
+    return(D)
   }
-  D
+  for(i in 1 : n.impute) g(d[[i]], i)
+  invisible()
 }
 
 ##' Get Stan Output
@@ -530,7 +549,7 @@ distSym <- function(x, prob=0.9, na.rm=FALSE) {
 ##' Bivariate Posterior Contour
 ##'
 ##' Computes coordinates of a highest density contour containing a given probability volume given a sample from a continuous bivariate distribution, and optionally plots.  The default method assumes an elliptical shape, but one can optionally use a kernel density estimator.
-##' Code adapted from `embbook::HPDregionplot`.  See <http://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse/>.
+##' Code adapted from `embbook::HPDregionplot`.  See <https://www.sumsar.net/blog/2014/11/how-to-summarize-a-2d-posterior-using-a-highest-density-ellipse/>.
 ##' @param x a numeric vector
 ##' @param y a numeric vector the same length of x
 ##' @param prob main probability coverage (the only one for `method='ellipse'`)
