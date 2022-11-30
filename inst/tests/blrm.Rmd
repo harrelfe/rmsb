@@ -33,11 +33,30 @@ The `rmsb` package is the Bayesian companion to the `rms` package, and uses many
 
 `blrm` uses normal priors for the $\beta$ parameters, and the user may specify the standard deviation of these priors separately for each model parameters.  The default is $\sigma=100$ which is nearly flat.  When there are random effects, the analyst may specify the mean of the exponential distribution that serves as the prior for the standard deviation of the random effects, with the default mean being 1.0, a reasonable number for the logit scale.  You can also use a half-$t$ distribution for the SD of random effects.
 
-Regarding uncertainies about statistical indexes of model performance such as AUROC, the Bayesian posterior distributions computed by `rmsb` account for coefficient uncertainty for the sample at hand's ability to uncover the true unknown data generating coefficients and how strongly those coefficients can predict outcomes in the sample.  The posterior distributions do not pertain to sample-to-sample variability of model fit or model validation.
+Regarding uncertainties about statistical indexes of model performance such as AUROC, the Bayesian posterior distributions computed by `rmsb` account for coefficient uncertainty for the sample at hand's ability to uncover the true unknown data generating coefficients and how strongly those coefficients can predict outcomes in the sample.  The posterior distributions do not pertain to sample-to-sample variability of model fit or model validation.
 
-`blrm` uses Stan code written by Ben Goodrich of Columbia University and Frank Harrell.  This code is precompiled when the `rmsb` package is built.  You must isntall the `rstan` package to use `rmsb`.
+`blrm` uses Stan code written by Ben Goodrich of Columbia University and Frank Harrell.  This code is precompiled when the `rmsb` package is built.  You must install the `rstan` package to use `rmsb`.   You can use [`cmdstan`](https://mc-stan.org/users/interfaces/cmdstan) and the [`cmdstanr`](https://mc-stan.org/cmdstanr) R package instead.  This is generally recommended, as `cmdstan` and `cmdstanr` make use of the latest versions of Stan.  Here are the steps I used for installing these on Linux, using the latest version of `cmdstan` as of 2022-11-25 (2.31.0):
 
-Here is a typical setup code chunk for using `rmsb`.  It is not recommended to use `options(auto_write=TRUE)` as when running a series of regressions, the `rstan` package tends to recompile Stan code even when the code doesn't change.
+```
+cd ~
+sudo R 
+install.packages('cmdstanr', repos='https://mc-stan.org/r-packages',
+                  lib='/usr/local/lib/R/site-library')
+# Default location for cmdstan is in `~/.cmdstan` in the user's home directory
+# This is not such a good idea
+cmdstanr::install_cmdstan(cores=10, dir='/usr/local/bin')
+# When running sudo, default is /root/.cmdstan which is not easily accessible
+```
+
+Add the following line in `.bashrc` so that `cmdstanr` will know where to find `cmdstan`:
+
+```
+export CMDSTAN=/usr/local/bin/cmdstan-2.31.0
+```
+
+`cmdstanr` will try to put compiled Stan code in the same directory where `cmdstan` is stored.  With the above setup, this location is not user-writeable, so it will not work.  The `blrm` function by default puts compiled code in the `.rmsb` directory under the user's home directory.  Specify `options(rmsbdir='some another location')` to change this.  The default behavior puts all compiled code in a system-wide location.  If you desire to archive a project and reproduce the result even if the Stan code inside `rmsb` is updated, you may want to specify a project-specific location fo `rmsbdir`.
+
+Here is a typical setup code chunk for using `rmsb`.  When using `rstan`, it is not recommended to use `options(auto_write=TRUE)` as when running a series of regressions, the `rstan` package tends to recompile Stan code even when the code doesn't change.
 
 <pre><code>```{r setup}
 require(rmsb)
@@ -63,11 +82,17 @@ vprint <- function(x, ...) {
   }
 ```
 
+If you want to use `cmdstan` by default, avoiding having to use the `backend` argument to `blrm`, you can add this to the setup chunk:
+
+```{r, eval=FALSE}
+options(rmsb.backend='cmdstan')
+```
+
 ## Running Fits Only When Something Changes
 
 You'll see `file='...'` in the longer running of the `blrm` calls below.  If the file already exists and none of the data nor the options sent to `rstan` nor the underlying Stan code have changed from what were used to create the fit object stored in that file (as judged by their `md5` hash), that saved fit object is returned immediately without running the `rstan` code, often saving a great deal of execution time.  This works well with the workflow of long R markdown reports making it so that only portions of Bayesian analysis that have changed are run.  Note that using the `knitr` `cache=TRUE` option does not work well as the cache files for this script were about a GB in size, and the system does not accurately recognize when a model fit hasn't changed and doesn't need to be run when `rstan` is involved.
 
-A restored fit object does not contain the `rstan` object, saving tens of megabytes of storage.  Standard Stan diagnostics are stored in the fit object separately, and it is assumed that if the user wanted to run `rstan::loo` `loo=TRUE` would have been specified to `blrm` so that `loo` is run and its (small) result stored in the `blrm` fit object.  If you want to run `pairs` to get more graphical diagnostics, intead of relying on the `rstan` object always being available, specify `pairs=TRUE` or `pairs='filename.png'` to `blrm` to graph the pair plots.  The latter is recommended, and one can put `knitr::include_graphics('filename.png')` in the R code chunk to render the graph in the report even if `blrm` was not re-run.
+A restored fit object does not contain the `rstan` or `cmdstanr` object, saving tens of megabytes of storage.  Standard Stan diagnostics are stored in the fit object separately, and it is assumed that if the user wanted to run `rstan::loo` `loo=TRUE` would have been specified to `blrm` so that `loo` is run and its (small) result stored in the `blrm` fit object.  If you want to run `pairs` to get more graphical diagnostics, intead of relying on the `rstan` object always being available, specify `pairs=TRUE` or `pairs='filename.png'` to `blrm` to graph the pair plots.  The latter is recommended, and one can put `knitr::include_graphics('filename.png')` in the R code chunk to render the graph in the report even if `blrm` was not re-run.
 
 When `file='filename.rds'` is specified to `blrm` and the file does not exist or analysis inputs have changed since the file was created, the `blrm` fit object will be saved in `saveRDS` `.rds` binary format in your current working directory at the completion of `blrm`'s work.  The `rstan` component is omitted from the saved file.
 
@@ -531,10 +556,24 @@ Fit the same model using the Bayesian approach.
 ```{r mixorb, results='asis'}
 bmixor <- blrm(imps79o ~ sqrt(Week) * TxDrug + cluster(id), data=d,
                file='bmixor.rds')
+bmixor <- blrm(imps79o ~ sqrt(Week) * TxDrug + cluster(id), data=d,
+               file='/tmp/bmixorrep.rds')  # 34 sec
 bmixor
 ```
 
 The square of the posterior median for $\sigma_\gamma$ is `r median(bmixor$omega[,'sigmag'])^2` which compares well with the `mixor` estimate of 3.774.  The $\hat{\beta}$s also compare very well.  Note that the model is stated differently, which makes two of the intercepts have different meanings across packages.
+
+Repeat the fit using `cmdstan`.
+
+```{r mixorbc, results='asis'}
+# Sometimes RStudio can't find the CMDSTAN environment variable
+cmdstanr::set_cmdstan_path('/usr/local/bin/cmdstan-2.31.0')
+bmixor2 <- blrm(imps79o ~ sqrt(Week) * TxDrug + cluster(id), data=d,
+                backend='cmdstan',
+                file='bmixor2.rds')  # 29 sec once compiled code stored
+bmixor2
+```
+
 
 ## Simulated Random Effects Longitudinal Data
 
