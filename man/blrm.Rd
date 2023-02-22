@@ -122,6 +122,8 @@ The Peterson and Harrell (1990) constrained partial proportional odds is also im
 
 When using the \code{cmdstan} backend, \code{cmdstanr} will need to compile the Stan code once per computer, only recompiling the code when the Stan source code changes.  By default the compiled code is stored in directory \code{.rmsb} under your home directory.  Specify \code{options(rmsbdir=)} to specify a different location.  You should specify \code{rmsbdir} to be in a project-specific location if you want to archive code for old projects.
 
+If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process, remove the \code{file} before running \code{blrm}.
+
 See \url{https://hbiostat.org/R/rms/blrm.html} for multiple examples with results.
 }
 \examples{

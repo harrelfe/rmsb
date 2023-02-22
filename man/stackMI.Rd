@@ -40,6 +40,8 @@ stackMI(
 
 \item{progress}{see \code{refresh}.  Defaults to \code{''} if \code{refresh = 0}.  Note: If running interactively but not under RStudio, \code{rstan} will open a browser window for monitoring progress.}
 
+\item{file}{optional file name in which to store results in RDS format.  If \code{file} is given and it already exists, and none of the arguments to \code{stackMI} have changed since that fit, the fit object from \code{file} is immediately returned.  So if the model, data, and imputations have not changed nothing needs to be computed.}
+
 \item{...}{arguments passed to \code{fitter}}
 }
 \value{

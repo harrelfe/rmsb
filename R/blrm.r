@@ -10,6 +10,8 @@
 ##'
 ##' When using the `cmdstan` backend, `cmdstanr` will need to compile the Stan code once per computer, only recompiling the code when the Stan source code changes.  By default the compiled code is stored in directory `.rmsb` under your home directory.  Specify `options(rmsbdir=)` to specify a different location.  You should specify `rmsbdir` to be in a project-specific location if you want to archive code for old projects.
 ##'
+##' If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process, remove the `file` before running `blrm`.
+##'
 ##' See <https://hbiostat.org/R/rms/blrm.html> for multiple examples with results.
 ##' @param formula a R formula object that can use `rms` package enhancements such as the restricted interaction operator
 ##' @param ppo formula specifying the model predictors for which proportional odds is not assumed
@@ -419,6 +421,7 @@ d$y <- unclass(d$y)
 
   debug(1)
   incpars <- c('alpha', 'beta', if(length(cluster)) c('gamma', 'sigmag'), if(pppo) 'tau', if(backend == 'rstan' & loo) 'log_lik')
+  
   stime <- system.time(
     g <- switch(backend,
                 rstan   = rstan::sampling(mod, pars=incpars,

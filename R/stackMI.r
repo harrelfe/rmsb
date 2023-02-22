@@ -11,7 +11,7 @@
 ##' @param subset an integer or logical vector specifying the subset of observations to fit
 ##' @param refresh see [rstan::sampling].  The default is 0, indicating that no progress notes are output.  If \code{refresh > 0} and \code{progress} is not \code{''}, progress output will be appended to file \code{progress}.  The default file name is \code{'stan-progress.txt'}.
 ##' @param progress see \code{refresh}.  Defaults to \code{''} if \code{refresh = 0}.  Note: If running interactively but not under RStudio, \code{rstan} will open a browser window for monitoring progress.
-##' @file optional file name in which to store results in RDS format.  If \code{file} is given and it already exists, and none of the arguments to \code{stackMI} have changed since that fit, the fit object from \code{file} is immediately returned.  So if the model, data, and imputations have not changed nothing needs to be computed.
+##' @param file optional file name in which to store results in RDS format.  If \code{file} is given and it already exists, and none of the arguments to \code{stackMI} have changed since that fit, the fit object from \code{file} is immediately returned.  So if the model, data, and imputations have not changed nothing needs to be computed.
 ##' @param ... arguments passed to \code{fitter}
 ##' @return an \code{rmsb} fit object with expanded posterior draws and diagnostics
 ##' @author Frank Harrell
@@ -137,7 +137,6 @@ Fitting imputed dataset number', i, 'of', n.impute, '\n\n',
         f[[fn]] <- deparse(f[[fn]])
       }
     f$functions_converted <- fc
-    prn(length(file))
     saveRDS(f, file, compress='xz')
   }
   res

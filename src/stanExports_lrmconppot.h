@@ -33,7 +33,7 @@ static int current_statement_begin__;
 stan::io::program_reader prog_reader__() {
     stan::io::program_reader reader;
     reader.add_event(0, 0, "start", "model_lrmconppot");
-    reader.add_event(122, 120, "end", "model_lrmconppot");
+    reader.add_event(121, 119, "end", "model_lrmconppot");
     return reader;
 }
 template <typename T0__, typename T1__, typename T2__, typename T3__, typename T4__, typename T5__, typename T6__>
@@ -541,12 +541,9 @@ public:
             validate_non_negative_index("tau", "q", q);
             num_params_r__ += q;
             current_statement_begin__ = 99;
-            validate_non_negative_index("pi", "k", k);
-            num_params_r__ += (k - 1);
-            current_statement_begin__ = 100;
             validate_non_negative_index("gamma_raw", "Nc", Nc);
             num_params_r__ += Nc;
-            current_statement_begin__ = 101;
+            current_statement_begin__ = 100;
             validate_non_negative_index("sigmag", "(logical_eq(Nc, 0) ? 0 : 1 )", (logical_eq(Nc, 0) ? 0 : 1 ));
             num_params_r__ += (1 * (logical_eq(Nc, 0) ? 0 : 1 ));
         } catch (const std::exception& e) {
@@ -618,23 +615,6 @@ public:
             stan::lang::rethrow_located(std::runtime_error(std::string("Error transforming variable tau: ") + e.what()), current_statement_begin__, prog_reader__());
         }
         current_statement_begin__ = 99;
-        if (!(context__.contains_r("pi")))
-            stan::lang::rethrow_located(std::runtime_error(std::string("Variable pi missing")), current_statement_begin__, prog_reader__());
-        vals_r__ = context__.vals_r("pi");
-        pos__ = 0U;
-        validate_non_negative_index("pi", "k", k);
-        context__.validate_dims("parameter initialization", "pi", "vector_d", context__.to_vec(k));
-        Eigen::Matrix<double, Eigen::Dynamic, 1> pi(k);
-        size_t pi_j_1_max__ = k;
-        for (size_t j_1__ = 0; j_1__ < pi_j_1_max__; ++j_1__) {
-            pi(j_1__) = vals_r__[pos__++];
-        }
-        try {
-            writer__.simplex_unconstrain(pi);
-        } catch (const std::exception& e) {
-            stan::lang::rethrow_located(std::runtime_error(std::string("Error transforming variable pi: ") + e.what()), current_statement_begin__, prog_reader__());
-        }
-        current_statement_begin__ = 100;
         if (!(context__.contains_r("gamma_raw")))
             stan::lang::rethrow_located(std::runtime_error(std::string("Variable gamma_raw missing")), current_statement_begin__, prog_reader__());
         vals_r__ = context__.vals_r("gamma_raw");
@@ -651,7 +631,7 @@ public:
         } catch (const std::exception& e) {
             stan::lang::rethrow_located(std::runtime_error(std::string("Error transforming variable gamma_raw: ") + e.what()), current_statement_begin__, prog_reader__());
         }
-        current_statement_begin__ = 101;
+        current_statement_begin__ = 100;
         if (!(context__.contains_r("sigmag")))
             stan::lang::rethrow_located(std::runtime_error(std::string("Variable sigmag missing")), current_statement_begin__, prog_reader__());
         vals_r__ = context__.vals_r("sigmag");
@@ -718,20 +698,13 @@ public:
             else
                 tau = in__.vector_constrain(q);
             current_statement_begin__ = 99;
-            Eigen::Matrix<local_scalar_t__, Eigen::Dynamic, 1> pi;
-            (void) pi;  // dummy to suppress unused var warning
-            if (jacobian__)
-                pi = in__.simplex_constrain(k, lp__);
-            else
-                pi = in__.simplex_constrain(k);
-            current_statement_begin__ = 100;
             Eigen::Matrix<local_scalar_t__, Eigen::Dynamic, 1> gamma_raw;
             (void) gamma_raw;  // dummy to suppress unused var warning
             if (jacobian__)
                 gamma_raw = in__.vector_constrain(Nc, lp__);
             else
                 gamma_raw = in__.vector_constrain(Nc);
-            current_statement_begin__ = 101;
+            current_statement_begin__ = 100;
             std::vector<local_scalar_t__> sigmag;
             size_t sigmag_d_0_max__ = (logical_eq(Nc, 0) ? 0 : 1 );
             sigmag.reserve(sigmag_d_0_max__);
@@ -742,24 +715,24 @@ public:
                     sigmag.push_back(in__.scalar_lb_constrain(0));
             }
             // transformed parameters
-            current_statement_begin__ = 105;
+            current_statement_begin__ = 104;
             validate_non_negative_index("gamma", "Nc", Nc);
             Eigen::Matrix<local_scalar_t__, Eigen::Dynamic, 1> gamma(Nc);
             stan::math::initialize(gamma, DUMMY_VAR__);
             stan::math::fill(gamma, DUMMY_VAR__);
             stan::math::assign(gamma,(logical_eq(Nc, 0) ? stan::math::promote_scalar<local_scalar_t__>(gamma_raw) : stan::math::promote_scalar<local_scalar_t__>(multiply(get_base1(sigmag, 1, "sigmag", 1), gamma_raw)) ));
-            current_statement_begin__ = 106;
+            current_statement_begin__ = 105;
             validate_non_negative_index("log_lik", "N", N);
             Eigen::Matrix<local_scalar_t__, Eigen::Dynamic, 1> log_lik(N);
             stan::math::initialize(log_lik, DUMMY_VAR__);
             stan::math::fill(log_lik, DUMMY_VAR__);
             // transformed parameters block statements
-            current_statement_begin__ = 107;
+            current_statement_begin__ = 106;
             stan::math::assign(log_lik, pw_log_lik(alpha, beta, tau, pposcore, gamma, Xr, Zr, y, cluster, pstream__));
             // validate transformed parameters
             const char* function__ = "validate transformed params";
             (void) function__;  // dummy to suppress unused var warning
-            current_statement_begin__ = 105;
+            current_statement_begin__ = 104;
             size_t gamma_j_1_max__ = Nc;
             for (size_t j_1__ = 0; j_1__ < gamma_j_1_max__; ++j_1__) {
                 if (stan::math::is_uninitialized(gamma(j_1__))) {
@@ -768,7 +741,7 @@ public:
                     stan::lang::rethrow_located(std::runtime_error(std::string("Error initializing variable gamma: ") + msg__.str()), current_statement_begin__, prog_reader__());
                 }
             }
-            current_statement_begin__ = 106;
+            current_statement_begin__ = 105;
             size_t log_lik_j_1_max__ = N;
             for (size_t j_1__ = 0; j_1__ < log_lik_j_1_max__; ++j_1__) {
                 if (stan::math::is_uninitialized(log_lik(j_1__))) {
@@ -778,31 +751,31 @@ public:
                 }
             }
             // model body
-            current_statement_begin__ = 111;
+            current_statement_begin__ = 110;
             if (as_bool(logical_gt(Nc, 0))) {
-                current_statement_begin__ = 112;
+                current_statement_begin__ = 111;
                 lp_accum__.add(std_normal_log<propto__>(gamma_raw));
-                current_statement_begin__ = 113;
+                current_statement_begin__ = 112;
                 if (as_bool(logical_eq(psigma, 1))) {
-                    current_statement_begin__ = 113;
+                    current_statement_begin__ = 112;
                     lp_accum__.add(student_t_log<propto__>(sigmag, 4, get_base1(rsdmean, 1, "rsdmean", 1), get_base1(rsdsd, 1, "rsdsd", 1)));
                 } else {
-                    current_statement_begin__ = 114;
+                    current_statement_begin__ = 113;
                     lp_accum__.add(exponential_log<propto__>(sigmag, (1. / get_base1(rsdmean, 1, "rsdmean", 1))));
                 }
             }
-            current_statement_begin__ = 116;
+            current_statement_begin__ = 115;
             lp_accum__.add(log_lik);
-            current_statement_begin__ = 117;
+            current_statement_begin__ = 116;
             if (as_bool(logical_eq(iprior, 2))) {
-                current_statement_begin__ = 117;
+                current_statement_begin__ = 116;
                 lp_accum__.add(student_t_log(alpha, 3, 0., ascale));
             }
-            current_statement_begin__ = 118;
+            current_statement_begin__ = 117;
             lp_accum__.add(normal_log(beta, 0, sds));
-            current_statement_begin__ = 119;
+            current_statement_begin__ = 118;
             if (as_bool(logical_gt(q, 0))) {
-                current_statement_begin__ = 119;
+                current_statement_begin__ = 118;
                 lp_accum__.add(normal_log(tau, 0, sdsppo));
             }
         } catch (const std::exception& e) {
@@ -828,7 +801,6 @@ public:
         names__.push_back("alpha");
         names__.push_back("beta");
         names__.push_back("tau");
-        names__.push_back("pi");
         names__.push_back("gamma_raw");
         names__.push_back("sigmag");
         names__.push_back("gamma");
@@ -845,9 +817,6 @@ public:
         dimss__.push_back(dims__);
         dims__.resize(0);
         dims__.push_back(q);
-        dimss__.push_back(dims__);
-        dims__.resize(0);
-        dims__.push_back(k);
         dimss__.push_back(dims__);
         dims__.resize(0);
         dims__.push_back(Nc);
@@ -891,11 +860,6 @@ public:
         for (size_t j_1__ = 0; j_1__ < tau_j_1_max__; ++j_1__) {
             vars__.push_back(tau(j_1__));
         }
-        Eigen::Matrix<double, Eigen::Dynamic, 1> pi = in__.simplex_constrain(k);
-        size_t pi_j_1_max__ = k;
-        for (size_t j_1__ = 0; j_1__ < pi_j_1_max__; ++j_1__) {
-            vars__.push_back(pi(j_1__));
-        }
         Eigen::Matrix<double, Eigen::Dynamic, 1> gamma_raw = in__.vector_constrain(Nc);
         size_t gamma_raw_j_1_max__ = Nc;
         for (size_t j_1__ = 0; j_1__ < gamma_raw_j_1_max__; ++j_1__) {
@@ -919,19 +883,19 @@ public:
         if (!include_tparams__ && !include_gqs__) return;
         try {
             // declare and define transformed parameters
-            current_statement_begin__ = 105;
+            current_statement_begin__ = 104;
             validate_non_negative_index("gamma", "Nc", Nc);
             Eigen::Matrix<double, Eigen::Dynamic, 1> gamma(Nc);
             stan::math::initialize(gamma, DUMMY_VAR__);
             stan::math::fill(gamma, DUMMY_VAR__);
             stan::math::assign(gamma,(logical_eq(Nc, 0) ? stan::math::promote_scalar<local_scalar_t__>(gamma_raw) : stan::math::promote_scalar<local_scalar_t__>(multiply(get_base1(sigmag, 1, "sigmag", 1), gamma_raw)) ));
-            current_statement_begin__ = 106;
+            current_statement_begin__ = 105;
             validate_non_negative_index("log_lik", "N", N);
             Eigen::Matrix<double, Eigen::Dynamic, 1> log_lik(N);
             stan::math::initialize(log_lik, DUMMY_VAR__);
             stan::math::fill(log_lik, DUMMY_VAR__);
             // do transformed parameters statements
-            current_statement_begin__ = 107;
+            current_statement_begin__ = 106;
             stan::math::assign(log_lik, pw_log_lik(alpha, beta, tau, pposcore, gamma, Xr, Zr, y, cluster, pstream__));
             if (!include_gqs__ && !include_tparams__) return;
             // validate transformed parameters
@@ -997,12 +961,6 @@ public:
             param_name_stream__ << "tau" << '.' << j_1__ + 1;
             param_names__.push_back(param_name_stream__.str());
         }
-        size_t pi_j_1_max__ = k;
-        for (size_t j_1__ = 0; j_1__ < pi_j_1_max__; ++j_1__) {
-            param_name_stream__.str(std::string());
-            param_name_stream__ << "pi" << '.' << j_1__ + 1;
-            param_names__.push_back(param_name_stream__.str());
-        }
         size_t gamma_raw_j_1_max__ = Nc;
         for (size_t j_1__ = 0; j_1__ < gamma_raw_j_1_max__; ++j_1__) {
             param_name_stream__.str(std::string());
@@ -1052,12 +1010,6 @@ public:
         for (size_t j_1__ = 0; j_1__ < tau_j_1_max__; ++j_1__) {
             param_name_stream__.str(std::string());
             param_name_stream__ << "tau" << '.' << j_1__ + 1;
-            param_names__.push_back(param_name_stream__.str());
-        }
-        size_t pi_j_1_max__ = (k - 1);
-        for (size_t j_1__ = 0; j_1__ < pi_j_1_max__; ++j_1__) {
-            param_name_stream__.str(std::string());
-            param_name_stream__ << "pi" << '.' << j_1__ + 1;
             param_names__.push_back(param_name_stream__.str());
         }
         size_t gamma_raw_j_1_max__ = Nc;
