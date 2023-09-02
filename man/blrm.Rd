@@ -127,7 +127,7 @@ When using the \code{cmdstan} backend, \code{cmdstanr} will need to compile the 
 
 If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process, remove the \code{file} before running \code{blrm}.
 
-See \url{https://hbiostat.org/R/rms/blrm.html} for multiple examples with results.
+See \url{https://hbiostat.org/R/examples/blrm/blrm.html} for multiple examples with results.
 }
 \examples{
 \dontrun{

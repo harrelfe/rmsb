@@ -12,7 +12,7 @@
 ##'
 ##' If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process, remove the `file` before running `blrm`.
 ##'
-##' See <https://hbiostat.org/R/rms/blrm.html> for multiple examples with results.
+##' See <https://hbiostat.org/R/examples/blrm/blrm.html> for multiple examples with results.
 ##' @param formula a R formula object that can use `rms` package enhancements such as the restricted interaction operator
 ##' @param ppo formula specifying the model predictors for which proportional odds is not assumed
 ##' @param cppo a function that if present causes a constrained partial PO model to be fit.  The function specifies the values in the Gamma vector in Peterson and Harrell (1990) equation (6).  To make posterior sampling better behaved, the function should be scaled and centered.  This is done by wrapping `cppo` in a function that scales the `cppo` result before return the vector value.  See the `normcco` argument for how to prevent this.  The default normalization is based on the mean and standard deviation of the function values over the distribution of observed Y.  For getting predicted values and estimates post-[blrm()], `cppo` must not reference any functions that are not available at such later times.
