@@ -22,7 +22,7 @@
 ##' @param na.action default is `na.delete` to remove missings and report on them
 ##' @param priorsd vector of prior standard deviations.  If the vector is shorter than the number of model parameters, it will be repeated until the length equals the number of parametertimes.
 ##' @param priorsdppo vector of prior standard deviations for non-proportional odds parameters.  As with `priorsd` the last element is the only one for which the SD corresponds to the original data scale.
-##' @param iprior specifies whether to use a Dirichlet distribution for the cell probabilities, which induce a more complex prior distribution for the intercepts (`iprior=0`, the default), non-informative priors (`iprior=1`) directly on the intercept parameters,  or to directly use a t-distribution with 3 d.f. and scale parameter `ascale` (`iprior=2`). 
+##' @param iprior specifies whether to use a Dirichlet distribution for the cell probabilities, which induce a more complex prior distribution for the intercepts (`iprior=0`, the default), non-informative priors (`iprior=1`) directly on the intercept parameters,  or to directly use a t-distribution with 3 d.f. and scale parameter `ascale` (`iprior=2`).
 ##' @param conc the Dirichlet distribution concentration parameter for the prior distribution of cell probabilities at covariate means.  The default is the reciprocal of 0.8 + 0.35 max(k, 3) where k is the number of Y categories.  The default is chosen to make the posterior mean of the intercepts more closely match the MLE.  For optimizing, the concentration parameter is always 1.0 to obtain results very close to the MLE for providing the posterior mode.
 ##' @param ascale scale parameter for the t-distribution for priors for the intercepts if `iprior=2`, defaulting to 1.0
 ##' @param psigma defaults to 1 for a half-t distribution with 4 d.f., location parameter `rsdmean` and scale parameter `rsdsd`.  Set `psigma=2` to use the exponential distribution.
@@ -45,7 +45,8 @@
 ##' @param standata set to `TRUE` to return the Stan data list and not run the model
 ##' @param debug set to `TRUE` to output timing and progress information to /tmp/debug.txt
 ##' @param file a file name for a `saveRDS`-created file containing or to contain the saved fit object.  If `file` is specified and the file does not exist, it will be created right before the fit object is returned, less the large `rstan` object.  If the file already exists, its stored `md5` hash string `datahash` fit object component is retrieved and compared to that of the current `rstan` inputs.  If the data to be sent to `rstan`, the priors, and all sampling and optimization options and stan code are identical, the previously stored fit object is immediately returned and no new calculatons are done.
-##' @param ... passed to [rstan::optimizing()].  The `seed` parameter is a popular example.
+##' @param sampling.args a list containing parameters to pass to [rstan::sampling()] or to the `rcmdstan` `sample` function, other than these arguments: `iter, warmup, chains, refresh, init` which are already arguments to `blrm`
+##' @param ... passed to [rstan::optimizing()] or the `rcmdstan` optimizing function.  The `seed` parameter is a popular example.
 ##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` or `cmdstanr` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the `keepsep` argument will have their original SDs.  The returned element `sampling_time` is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
 ##' @examples
 ##' \dontrun{
@@ -85,11 +86,12 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
                  method=c('both', 'sampling', 'optimizing'),
                  inito=if(length(ppo)) 0 else 'random', inits=inito,
                  standata=FALSE, file=NULL, debug=FALSE,
-                 ...) {
+                 sampling.args=NULL, ...) {
 
   call    <- match.call()
   method  <- match.arg(method)
-  backend <- if(missing(backend)) getOption('rmsb.backend', 'rstan') else match.arg(backend)
+  backend <- if(missing(backend))
+               getOption('rmsb.backend', 'rstan') else match.arg(backend)
 
   if(backend == 'cmdstan') {
     rmsbdir <- getOption('rmsbdir')
@@ -225,7 +227,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   xbar  <- wqrX$xbar
   xqrsd <- apply(Xs, 2, sd)
   wqrX$X <- NULL
-  
+
   if(length(ppo)) {
     wqrZ   <- selectedQr(Z, center=TRUE, not=notransZ)
     Zs     <- wqrZ$X
@@ -276,7 +278,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 
   ## Need to negate alphas from Stan if use flat or t-distribution prior
   ## for intercepts (iprior > 0)
-  
+
   alphasign <- if(iprior == 0) 1. else -1.
 
   if(length(cppo)) {
@@ -314,14 +316,14 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   d$q <- pppo
   priorsdppo <- rep(priorsdppo, length=pppo)
   d$sdsppo   <- as.array(priorsdppo)
-  
+
 	if(any(is.na(Xs)) | any(is.na(Y))) stop('program logic error')
 
   unconstrainedppo <- pppo > 0 && length(cppo) == 0
   fitter <- if(unconstrainedppo) 'lrmcppo'
             else if(iprior == 0) 'lrmconppo' else 'lrmconppot'
   if(unconstrainedppo) d$pposcore <- d$lpposcore <- NULL
-  
+
   if(standata) return(d)
 
   switch(backend,
@@ -350,8 +352,9 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   sigmagname <- if(length(cluster)) 'sigmag[1]'
 
   if(backend == 'cmdstan') {
-    require(cmdstanr)
-    mod <- suppressMessages(cmdstan_model(sfile, dir=rmsbdir))
+    if(! requireNamespace('cmdstanr', quietly=TRUE))
+      stop('to use cmdstan backend you must install the cmdstanr package')
+    mod <- suppressMessages(cmdstanr::cmdstan_model(sfile, dir=rmsbdir))
   }
 
 # cmdstan needs a JSON method for components of data
@@ -388,7 +391,7 @@ d$y <- unclass(d$y)
       if(pppo) {
         if(length(cppo)) { # constrained PPO model
           taus <- matrix(parm[ta], nrow=pppo, ncol=1)
-  
+
           taus <- wqrZ$Rinv %*% taus
           alphas <- alphas - d$pposcore[-1] * sum(taus * zbar)
           # zbartau <- sum(taus * zbar)    # longhand
@@ -421,21 +424,27 @@ d$y <- unclass(d$y)
 
   debug(1)
   incpars <- c('alpha', 'beta', if(length(cluster)) c('gamma', 'sigmag'), if(pppo) 'tau', if(backend == 'rstan' & loo) 'log_lik')
-  
-  stime <- system.time(
+
+  stime <- system.time({
+    args <- switch(backend,
+                   rstan = c(list(mod, pars=incpars, data=d, iter=iter,
+                                  warmup=warmup, chains=chains,
+                                  refresh=refresh),
+                             sampling.args),
+                   cmdstan = c(list(data=d, iter_sampling=iter - warmup,
+                                    iter_warmup=warmup, chains=chains,
+                                    refresh=refresh,
+                                    init=if(! all(inits == 'random')) inits),
+                               sampling.args))
     g <- switch(backend,
-                rstan   = rstan::sampling(mod, pars=incpars,
-                              data=d, iter=iter, warmup=warmup, chains=chains, refresh=refresh,
-                              init=inits, ...),
-                cmdstan = mod$sample(data=d, iter_sampling=iter - warmup, 
-                            iter_warmup=warmup, chains=chains,
-                            refresh=refresh, init=if(! all(inits == 'random')) inits, ...) )  )
+                rstan   = do.call(rstan::sampling, args),
+                cmdstan = do.call(mod$sample, args)) })
   sampling_time <- unname(stime['elapsed'])
   debug(2)
 
   if(progress != '') sink()
 
-  draws <- switch(backend, 
+  draws <- switch(backend,
                   cmdstan = {
                     draws <- g$draws()
                     nam   <- dimnames(draws)[[3]]
@@ -524,14 +533,20 @@ d$y <- unclass(d$y)
        }  )
 
   debug(6)
-  
+
   if(length(ppairs)) {
-    if(backend == 'cmdstan') require(bayesplot)
+    if(backend == 'cmdstan')
+      if(! requireNamespace('bayesplot', quietly=TRUE))
+        stop('bayesplot package must be installed if using ppairs and cmdstan')
     if(is.character(ppairs)) png(ppairs, width=1000, height=1000, pointsize=11)
-    switch(backend,
-      rstan   = pairs(g, pars=c(al[1], be, clparm)),
-      cmdstan = print(mcmc_pairs(g$draws(c(al[1], be, clparm)), np=nuts_params(g))) )
-    if(is.character(ppairs)) dev.off()
+    ppa <- tryCatch(
+      switch(backend,
+        rstan   = pairs(g, pars=c(al[1], be, clparm)),
+        cmdstan = print(bayesplot::mcmc_pairs(g$draws(c(al[1], be, clparm)),
+                                            np=bayesplot::nuts_params(g))) ),
+      error=function(...) list(fail=TRUE))
+    if(itfailed(ppa)) warning('ppairs failed, probably because of too many parameters for available space')
+    if(itfailed(ppa) || is.character(ppairs)) dev.off()
   }
 
   debug(7)
@@ -569,7 +584,7 @@ d$y <- unclass(d$y)
     if(itfailed(Loo)) {
       warning('loo failed; try running on loo(stanGet(fit object)) for more information')
       Loo <- NULL
-    } 
+    }
   }
 
   debug(9)
@@ -640,6 +655,7 @@ d$y <- unclass(d$y)
 ##' }
 ##' @author Frank Harrell
 ##' @export
+##' @importFrom utils capture.output
 blrmStats <- function(fit, ns=400, prob=0.95, pl=FALSE,
                       dist=c('density', 'hist')) {
   dist <- match.arg(dist)
@@ -816,7 +832,7 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
            '2' = paste('t-Distribution Priors With 3 d.f. and Scale Parameter',
                      round(ascale, 2), 'for Intercepts')
            )
-  
+
   z <- list()
   k <- 0
 
@@ -968,10 +984,10 @@ predict.blrm <-
 
   pppo <- object$pppo
   if(pppo == 0) zcppo <- FALSE
-  
+
   if(type == 'x' && pppo == 0)
     return(predictrms(object, ..., type='x'))
-  
+
   if(type %in% c('data.frame', 'terms', 'cterms', 'ccterms',
                  'adjto', 'adjto.data.frame', 'model.frame'))
     return(predictrms(object, ..., type=type))
@@ -981,7 +997,7 @@ predict.blrm <-
     if(! length(cppo))
       stop('only constrained partial PO models are implemented at present')
   }
-  
+
   X     <- predictrms(object, ..., type='x')
   rnam  <- rownames(X)
   n     <- nrow(X)
@@ -1038,7 +1054,7 @@ predict.blrm <-
     ycut <- rep(ycut, length=n)
 
     draws1int <- draws[, c(kint, (ns + 1) : p), drop=FALSE]
-    
+
     if(posterior.summary != 'all' &&
        (! length(fun) || ! funint) & ! cint) {
       if(pppo > 0) {
@@ -1062,7 +1078,7 @@ predict.blrm <-
       if(posterior.summary == 'all') return(lp)
       lpsum <- apply(lp, 2, postsum)
       if(! cint) return(lpsum)
-      
+
       ## When not 'all' the no-cint case was handled above.  Compute HPD
       ## intervals for each prediction
       hpd   <- apply(lp, 2, HPDint, prob=cint)
@@ -1071,7 +1087,7 @@ predict.blrm <-
 
     ## What's left is a complex linear predictor request, i.e., for
     ## a function that must use all the intercepts from each draw
-    
+
     xb   <- t(matxv(X, cbind(ints[, iref], betas), bmat=TRUE))
     ztau <- if(pppo > 0) t(matxv(Z, taus, bmat=TRUE))
     r    <- matrix(NA, nrow=ndraws, ncol=n)
@@ -1119,7 +1135,7 @@ predict.blrm <-
       if(type == 'fitted.ind') PPeq[i, j, ] <- c(1., ep) - c(ep, 0.)
     }
   }
-  
+
   if(posterior.summary == 'all')
     return(switch(type,
                   fitted     = PP,
@@ -1543,3 +1559,15 @@ as.data.frame.Ocens <- function(x, row.names = NULL, optional = FALSE, ...) {
   class(x) <- 'Ocens'
   x
   }
+
+
+##' Cluster Function for Random Effects
+##'
+##' Used by `blrm` to signal a categorical variable to generate random effects.
+##' @title cluster
+##' @param x a vector representing a categorical vector
+##' @return x unchanged
+##' @author Frank Harrell
+##' @md
+##' @export
+cluster <- function(x) x

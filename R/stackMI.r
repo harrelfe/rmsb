@@ -59,6 +59,8 @@ Fitting imputed dataset number', i, 'of', n.impute, '\n\n',
                            file=progress, append=TRUE)
 
     if(used.mice) {
+      if(! requireNamespace('mice', quietly=TRUE))
+        stop('mice package must be installed to process a mice result')
       completed.data <- mice::complete(xtrans, i)
       for(impvar in names(completed.data))
         if(length(attr(completed.data[[impvar]], 'contrasts')))

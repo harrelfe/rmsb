@@ -1,8 +1,11 @@
-Changes for 0.2-0 (2022-11-25)
+Changes for 1.0-0 (2023-09-02)
    * blrm: added support for cmdstan and cmdstanr package using backend=
    * When using cmdstan uses bayesplot package for pairs plots
    * stanDx: new code for cmdstan diagnostics
    * stackMI: corrected erroneous implementation of file= where it was only applying to one of the imputations; also handled generally the conversion of functions in fit object to character strings for efficient serializing
+   * Added non-exported function cluster so as to not depend on survival package
+   * blrm: added sampling.args argument
+   * blrm: trapped ppairs error in case plot region too small to hold graph
 
 Changes for 0.1-0 (2022-04-12)
    * blrm: got around bug in model.response not keeping class Ocens
@@ -15,4 +18,4 @@ Changes for 0.0-2 (2021-02-27)
    * Changed storage of cppo function in fit object to character strings so as to not have saveRDS serialize it with all its environment data
    * Added lrmconppot.stan to implement flat and t-distribution priors for intercepts
    * blrm: added iprior argument for lrmconppot
-   * predict.blrm: fixed fun= with finint=FALSE	 
+   * predict.blrm: fixed fun= with finint=FALSE

@@ -37,6 +37,7 @@ blrm(
   standata = FALSE,
   file = NULL,
   debug = FALSE,
+  sampling.args = NULL,
   ...
 )
 }
@@ -105,7 +106,9 @@ blrm(
 
 \item{debug}{set to \code{TRUE} to output timing and progress information to /tmp/debug.txt}
 
-\item{...}{passed to \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}.  The \code{seed} parameter is a popular example.}
+\item{sampling.args}{a list containing parameters to pass to \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} or to the \code{rcmdstan} \code{sample} function, other than these arguments: \verb{iter, warmup, chains, refresh, init} which are already arguments to \code{blrm}}
+
+\item{...}{passed to \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}} or the \code{rcmdstan} optimizing function.  The \code{seed} parameter is a popular example.}
 }
 \value{
 an \code{rms} fit object of class \code{blrm}, \code{rmsb}, \code{rms} that also contains \code{rstan} or \code{cmdstanr} results under the name \code{rstan}.  In the \code{rstan} results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by \code{\link[=blrm]{blrm()}}.  With \code{method='optimizing'} a class-less list is return with these elements: \code{coefficients} (MLEs), \code{beta} (non-intercept parameters on the QR decomposition scale), \code{deviance} (-2 log likelihood), \code{return_code} (see \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}), and, if you specified \code{hessian=TRUE} to \code{\link[=blrm]{blrm()}}, the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the \code{xqrsd} object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the \code{keepsep} argument will have their original SDs.  The returned element \code{sampling_time} is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
