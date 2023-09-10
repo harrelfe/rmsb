@@ -2,7 +2,7 @@
 functions {
   // pointwise log-likelihood contributions
   vector pw_log_lik(vector alpha, vector beta, matrix tau, vector gamma,
-	                  row_vector[] X, row_vector[] Z, int[] y, int[] cluster) {
+	                  array[] row_vector X, array[] row_vector Z, array[] int y, array[] int cluster) {
     int N = size(X);
     vector[N] out;
     int k = max(y); // assumes all possible categories are observed
@@ -30,7 +30,7 @@ functions {
   
   // Pr(y == j)
   matrix Pr(vector alpha, vector beta, matrix tau, vector gamma,
-	          row_vector[] X, row_vector[] Z, int[] y, int[] cluster) {
+	          array[] row_vector X, array[] row_vector Z, array[] int y, array[] int cluster) {
     int N = size(X);
     int k = max(y); // assumes all possible categories are observed
     matrix[N, k] out;
@@ -63,24 +63,24 @@ data {
   matrix[N, p] X;     // matrix of CENTERED predictors
 	matrix[N, q] Z;     // matrix of CENTERED PPO predictors
   int<lower = 2> k;   // number of outcome categories
-  int<lower = 1, upper = k> y[N]; // outcome on 1 ... k
-  int<lower = 1, upper = Nc> cluster[Nc == 0 ? 0 : N];  // cluster IDs
+  array[N] int<lower = 1, upper = k> y; // outcome on 1 ... k
+  array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;  // cluster IDs
   
   // prior standard deviations
   vector<lower = 0>[p] sds;
 	vector<lower = 0>[q] sdsppo;
 
   int<lower = 1, upper = 2> psigma;  // 1=t(4, rsdmean, rsdsd); 2=exponential
-  real<lower = 0> rsdmean[Nc == 0 ? 0 : 1];  // mean of prior for sigma
-  real<lower = 0> rsdsd[Nc == 0 || psigma == 2 ? 0 : 1];
+  array[Nc == 0 ? 0 : 1] real<lower = 0> rsdmean;  // mean of prior for sigma
+  array[Nc == 0 || psigma == 2 ? 0 : 1] real<lower = 0> rsdsd;
 	// scale parameter for sigma (used only if psigma=1)
 
   real<lower = 0> conc;
 }
 
 transformed data {
-  row_vector[p] Xr[N];
-  row_vector[q] Zr[N];
+  array[N] row_vector[p] Xr;
+  array[N] row_vector[q] Zr;
   
   for (n in 1:N) Xr[n] = X[n, ];
   for (n in 1:N) Zr[n] = Z[n, ];
@@ -91,7 +91,7 @@ parameters {
   matrix[q, k - 2] tau;  // coefficients on Z
   simplex[k] pi;  // category probabilities for a person w/ average predictors
   vector[Nc] gamma_raw;  // unscaled random effects
-  real<lower = 0> sigmag[Nc == 0 ? 0 : 1];   // SD of random effects
+  array[Nc == 0 ? 0 : 1] real<lower = 0> sigmag;   // SD of random effects
 }
 
 transformed parameters {
