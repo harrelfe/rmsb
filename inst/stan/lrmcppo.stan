@@ -2,7 +2,7 @@
 functions {
   // pointwise log-likelihood contributions
   vector pw_log_lik(vector alpha, vector beta, matrix tau, vector gamma,
-	                  row_vector[] X, row_vector[] Z, int[] y, int[] cluster) {
+	                  array[] row_vector X, array[] row_vector Z, array[] int y, array[] int cluster) {
     int N = size(X);
     vector[N] out;
     int k = max(y); // assumes all possible categories are observed
@@ -30,7 +30,7 @@ functions {
   
   // Pr(y == j)
   matrix Pr(vector alpha, vector beta, matrix tau, vector gamma,
-	          row_vector[] X, row_vector[] Z, int[] y, int[] cluster) {
+	          array[] row_vector X, array[] row_vector Z, array[] int y, array[] int cluster) {
     int N = size(X);
     int k = max(y); // assumes all possible categories are observed
     matrix[N, k] out;
@@ -60,27 +60,37 @@ data {
   int<lower = 0> Nc;  // number of clusters  (0 = no clustering)
   int<lower = 1> p;   // number of predictors
 	int<lower = 1> q;   // number of non-PO predictors in Z
+	int<lower = 0> cn;  // number of contrasts given priors
   matrix[N, p] X;     // matrix of CENTERED predictors
 	matrix[N, q] Z;     // matrix of CENTERED PPO predictors
+	matrix[cn, p] C;    // contrasts
   int<lower = 2> k;   // number of outcome categories
-  int<lower = 1, upper = k> y[N]; // outcome on 1 ... k
-  int<lower = 1, upper = Nc> cluster[Nc == 0 ? 0 : N];  // cluster IDs
+  // int<lower = 1, upper = k> y[N]; // outcome on 1 ... k
+  // int<lower = 1, upper = Nc> cluster[Nc == 0 ? 0 : N];  // cluster IDs
+  array[N] int<lower = 1, upper = k> y; // outcome on 1 ... k
+  array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;  // cluster IDs
   
   // prior standard deviations
   vector<lower = 0>[p] sds;
 	vector<lower = 0>[q] sdsppo;
 
+	// prior means and SDs for contrasts
+	vector[cn] cmus;
+	vector[cn] csds;
+
   int<lower = 1, upper = 2> psigma;  // 1=t(4, rsdmean, rsdsd); 2=exponential
-  real<lower = 0> rsdmean[Nc == 0 ? 0 : 1];  // mean of prior for sigma
-  real<lower = 0> rsdsd[Nc == 0 || psigma == 2 ? 0 : 1];
+  // real<lower = 0> rsdmean[Nc == 0 ? 0 : 1];  // mean of prior for sigma
+  // real<lower = 0> rsdsd[Nc == 0 || psigma == 2 ? 0 : 1];
+  array[Nc == 0 ? 0 : 1] real<lower = 0> rsdmean;  // mean of prior for sigma
+  array[Nc == 0 || psigma == 2 ? 0 : 1] real<lower = 0> rsdsd;
 	// scale parameter for sigma (used only if psigma=1)
 
   real<lower = 0> conc;
 }
 
 transformed data {
-  row_vector[p] Xr[N];
-  row_vector[q] Zr[N];
+  array[N] row_vector[p] Xr; //row_vector[p] Xr[N];
+  array[N] row_vector[q] Zr; //row_vector[q] Zr[N];
   
   for (n in 1:N) Xr[n] = X[n, ];
   for (n in 1:N) Zr[n] = Z[n, ];
@@ -91,7 +101,9 @@ parameters {
   matrix[q, k - 2] tau;  // coefficients on Z
   simplex[k] pi;  // category probabilities for a person w/ average predictors
   vector[Nc] gamma_raw;  // unscaled random effects
-  real<lower = 0> sigmag[Nc == 0 ? 0 : 1];   // SD of random effects
+  // real<lower = 0> sigmag[Nc == 0 ? 0 : 1];   // SD of random effects
+  array[Nc ==0 ? 0 : 1] real<lower = 0> sigmag;   // SD of random effects
+	
 }
 
 transformed parameters {
@@ -112,4 +124,5 @@ model {
   target += dirichlet_lpdf(pi | rep_vector(conc, k));
   target += normal_lpdf(beta | 0, sds);
 	for (j in 1:(k - 2)) target += normal_lpdf(tau[ , j] | 0, sdsppo);
+	if(cn > 0) target += normal_lpdf(C * beta | cmus, csds);
 }
