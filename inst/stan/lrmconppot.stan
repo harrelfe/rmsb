@@ -77,7 +77,6 @@ data {
 	array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;
   
 // prior standard deviations
-	vector<lower = 0>[p] sds;
 	vector<lower = 0>[q] sdsppo;
 	int<lower = 1, upper = 2> iprior; // 1=flat 2=t(3, 0, ascale)
 	real<lower = 0.01> ascale;
@@ -120,7 +119,6 @@ model {
 		}
   target += log_lik;
 	if(iprior == 2) target += student_t_lpdf(alpha | 3, 0., ascale);
-  target += normal_lpdf(beta | 0, sds);
 	if(q > 0) target += normal_lpdf(tau | 0, sdsppo);
 	if(cn > 0) target += normal_lpdf(C * beta | cmus, csds);
 }

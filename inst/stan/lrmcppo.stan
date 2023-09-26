@@ -71,7 +71,6 @@ data {
   array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;  // cluster IDs
   
   // prior standard deviations
-  vector<lower = 0>[p] sds;
 	vector<lower = 0>[q] sdsppo;
 
 	// prior means and SDs for contrasts
@@ -122,7 +121,6 @@ model {
 		}
   target += log_lik;
   target += dirichlet_lpdf(pi | rep_vector(conc, k));
-  target += normal_lpdf(beta | 0, sds);
 	for (j in 1:(k - 2)) target += normal_lpdf(tau[ , j] | 0, sdsppo);
 	if(cn > 0) target += normal_lpdf(C * beta | cmus, csds);
 }

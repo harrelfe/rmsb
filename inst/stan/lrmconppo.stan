@@ -76,7 +76,6 @@ data {
 	array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;
   
 // prior standard deviations
-	vector<lower = 0>[p] sds;
 	vector<lower = 0>[q] sdsppo;
   real<lower = 0> conc;
 
@@ -119,7 +118,6 @@ model {
 		else sigmag ~ exponential(1. / rsdmean[1]);
 		}
   target += log_lik;
-  target += normal_lpdf(beta | 0, sds);
   target += dirichlet_lpdf(pi | rep_vector(conc, k));
 	if(q > 0) target += normal_lpdf(tau | 0, sdsppo);
 	if(cn > 0) target += normal_lpdf(C * beta | cmus, csds);

@@ -1,4 +1,4 @@
-Changes for 1.0-0 (2023-09-15)
+Changes for 1.0-0 (2023-09-26)
    * blrm: added support for cmdstan and cmdstanr package using backend=
    * When using cmdstan uses bayesplot package for pairs plots
    * stanDx: new code for cmdstan diagnostics
@@ -7,6 +7,7 @@ Changes for 1.0-0 (2023-09-15)
    * blrm: added sampling.args argument
    * blrm: trapped ppairs error in case plot region too small to hold graph
    * blrm: added pcontrast argument for user-specified priors on linear combinations of regression coefficients; required changing all Stan code
+   * blrm: removed priorsd argument (NON-DOWNWARD-COMPATIBLE CHANGE)
 
 Changes for 0.1-0 (2022-04-12)
    * blrm: got around bug in model.response not keeping class Ocens
