@@ -25,6 +25,7 @@ Description: A Bayesian companion to the 'rms' package, 'rmsb' provides Bayesian
 License: GPL (>= 3)
 Encoding: UTF-8
 URL: https://hbiostat.org/R/rmsb/
+BugReports: https://github.com/harrelfe/rmsb/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
 Biarch: true
