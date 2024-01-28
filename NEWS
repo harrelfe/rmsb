@@ -1,3 +1,6 @@
+Changes for 1.0-1 (2024-01-28)
+   * Store cppo as deparsed for opt object from optimization (MLE) to prevent huge environment from being carried along
+
 Changes for 1.0-0 (2023-09-26)
    * blrm: added support for cmdstan and cmdstanr package using backend=
    * When using cmdstan uses bayesplot package for pairs plots

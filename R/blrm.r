@@ -323,7 +323,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   d$C  <- d$cmus <- d$csds <- array(numeric(0))
   d$C  <- array(0., c(0, p))
 
-	if(any(is.na(Xs)) | any(is.na(Y))) stop('program logic error')
+  if(any(is.na(Xs)) | any(is.na(Y))) stop('program logic error')
 
   unconstrainedppo <- pppo > 0 && length(cppo) == 0
   fitter <- if(unconstrainedppo) 'lrmcppo'
@@ -343,7 +343,9 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 
   ## See if previous fit had identical inputs and Stan code
   ## If using cmdstand, no need to even compile the code if so
-  hashobj  <- list(d, inito, inits, iter, warmup, chains, loo, ppairs, method,
+  ## Object d does not yet have C in it so use the precursor of C (pcontrast)
+  ## in hash digest
+  hashobj  <- list(d, pcontrast, inito, inits, iter, warmup, chains, loo, ppairs, method,
                    stancode, ...)
   datahash <- digest::digest(hashobj)
   if(length(prevhash) && prevhash == datahash) return(prevfit)
@@ -408,6 +410,8 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
                                           expand=expand)) )
 
     ## Over expressions in contrasts evaluate them in XC
+    ww <- list(con=con, XC=XC, wqrX=wqrX)
+    saveRDS(ww, '/tmp/ww.rds')
     Contrast <- do.call(rbind, lapply(con, eval, XC))
     cn <- nrow(Contrast)
     if(! length(cmus)) cmus <- 0.
@@ -477,7 +481,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
       }
       names(alphas) <- if(nrp == 1) 'Intercept' else paste0('y>=', ylev[-1])
       opt <- list(coefficients=c(alphas, betas, taus),
-                  cppo=cppo, zbar=zbar,
+                  cppo=deparse(cppo), zbar=zbar,   # prevent huge environment for cppo
                   sigmag=parm[sigmagname],
                   deviance=-2 * switch(backend, rstan = g$value, cmdstan = g$lp()),
                   return_code=g$return_code, hessian=g$hessian)
@@ -512,7 +516,6 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 
   if(progress != '') sink()
 
-## browser();stop()
   draws <- switch(backend,
                   cmdstan = {
                     draws <- g$draws()

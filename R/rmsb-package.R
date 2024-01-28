@@ -10,7 +10,6 @@
 #' binary and ordinal regression with optional clustering, censoring, and
 #' departures from the proportional odds assumption using the partial
 #' proportional odds model of Peterson and Harrell (1990).
-#' @docType package
 #' @name rmsb-package
 #' @aliases rmsb
 #' @useDynLib rmsb, .registration = TRUE
