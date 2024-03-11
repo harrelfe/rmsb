@@ -1,5 +1,7 @@
-Changes for 1.0-1 (2024-01-28)
+Changes for 1.1-0 (2024-03-11)
    * Store cppo as deparsed for opt object from optimization (MLE) to prevent huge environment from being carried along
+   * blrm: Non-downward compatible changes: removed keepsep argument
+   * blrm: Added npcontrast argument for specification of priors for non-proportional-odds parameters in the constrained partial PO model through the use of contrasts, parallel to pcontrast for the PO part of the model; changed 3 stan code modules for this
 
 Changes for 1.0-0 (2023-09-26)
    * blrm: added support for cmdstan and cmdstanr package using backend=

@@ -1,4 +1,8 @@
 .Rproj.user
 .Rhistory
 publish
+*.o
+*.so
+.DS_Store
+
 

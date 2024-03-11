@@ -10,6 +10,7 @@
   kint = NULL,
   ycut = NULL,
   zcppo = TRUE,
+  Zmatrix = TRUE,
   fun = NULL,
   funint = TRUE,
   type = c("lp", "fitted", "fitted.ind", "mean", "x", "data.frame", "terms", "cterms",
@@ -28,6 +29,8 @@
 \item{ycut}{for an ordinal model specifies the Y cutoff to use in evaluating departures from proportional odds, when the constrained partial proportional odds model is used.  When omitted, \code{ycut}    is implied by \code{kint}.  The only time it is absolutely mandatory    to specify \code{ycut} is when computing an effect (e.g., odds ratio) at a level of the response variable that did not occur in the data.    This would only occur when the \code{cppo} function given to    \code{blrm} is a continuous function.  If \code{type='x'} and neither \code{kint} nor \code{ycut} are given, the partial PO part of the design matrix is not multiplied by the \code{cppo} function.  If \code{type='x'}, the number of predicted observations is 1, \code{ycut} is longer than 1, and \code{zcppo} is \code{TRUE}, predictions are duplicated to the length of \code{ycut} as it is assumed that the user wants to see the effect of varying \code{ycut}, e.g., to see cutoff-specific odds ratios.}
 
 \item{zcppo}{applies only to \code{type='x'} for a constrained partial PO model.  Set to \code{FALSE} to prevent multiplication of Z matrix by \code{cppo(ycut)}.}
+
+\item{Zmatrix}{set to \code{FALSE} to exclude the partial PO Z matrix from the returned design matrix if \code{type='x'}}
 
 \item{fun}{a function to evaluate on the linear predictor, e.g. a function created by \code{\link[=Mean]{Mean()}} or \code{\link[=Quantile]{Quantile()}}}
 

@@ -8,7 +8,6 @@ blrm(
   formula,
   ppo = NULL,
   cppo = NULL,
-  keepsep = NULL,
   data = environment(formula),
   subset,
   na.action = na.delete,
@@ -19,8 +18,9 @@ blrm(
   psigma = 1,
   rsdmean = if (psigma == 1) 0 else 1,
   rsdsd = 1,
-  normcppo = TRUE,
+  normcppo = FALSE,
   pcontrast = NULL,
+  npcontrast = NULL,
   backend = c("rstan", "cmdstan"),
   iter = 2000,
   warmup = iter/2,
@@ -46,9 +46,7 @@ blrm(
 
 \item{ppo}{formula specifying the model predictors for which proportional odds is not assumed}
 
-\item{cppo}{a function that if present causes a constrained partial PO model to be fit.  The function specifies the values in the Gamma vector in Peterson and Harrell (1990) equation (6).  To make posterior sampling better behaved, the function should be scaled and centered.  This is done by wrapping \code{cppo} in a function that scales the \code{cppo} result before return the vector value.  See the \code{normcco} argument for how to prevent this.  The default normalization is based on the mean and standard deviation of the function values over the distribution of observed Y.  For getting predicted values and estimates post-\code{\link[=blrm]{blrm()}}, \code{cppo} must not reference any functions that are not available at such later times.}
-
-\item{keepsep}{a single character string containing a regular expression applied to design matrix column names, specifying which columns for non-proportional odds terms are not to be QR-orthonormalized, so that priors for those columns apply to the original parameters.  This does not apply to the main part of the model.  \code{keepsep} is useful for treatment and treatment interaction terms.  For example \code{keepsep='treat'} will keep separate all design matrix columns containing \code{'treat'} in their names.  Some characters such as the caret used in polynomial regression terms will need to be escaped by a double backslash.}
+\item{cppo}{a function that if present causes a constrained partial PO model to be fit.  The function specifies the values in the Gamma vector in Peterson and Harrell (1990) equation (6).  Sometimes to make posterior sampling better behaved, the function should be scaled and centered.  This is done by wrapping \code{cppo} in a function that scales the \code{cppo} result before returning the vector value, when \code{normcppo} is \code{TRUE}. The default normalization is based on the mean and standard deviation of the function values over the distribution of observed Y.  For getting predicted values and estimates post-\code{\link[=blrm]{blrm()}}, \code{cppo} must not reference any functions that are not available at such later times.}
 
 \item{data}{a data frame; defaults to using objects from the calling environment}
 
@@ -56,7 +54,7 @@ blrm(
 
 \item{na.action}{default is \code{na.delete} to remove missings and report on them}
 
-\item{priorsdppo}{vector of prior standard deviations for non-proportional odds parameters.  The last element is the only one for which the SD corresponds to the original data scale.}
+\item{priorsdppo}{vector of prior standard deviations for non-proportional odds parameters.  The last element is the only one for which the SD corresponds to the original data scale.  This only applies to the unconstrained PPO model.}
 
 \item{iprior}{specifies whether to use a Dirichlet distribution for the cell probabilities, which induce a more complex prior distribution for the intercepts (\code{iprior=0}, the default), non-informative priors (\code{iprior=1}) directly on the intercept parameters,  or to directly use a t-distribution with 3 d.f. and scale parameter \code{ascale} (\code{iprior=2}).}
 
@@ -70,9 +68,11 @@ blrm(
 
 \item{rsdsd}{applies only to \code{psigma=1} and is the scale parameter for the half t distribution for the SD of random effects, defaulting to 1.}
 
-\item{normcppo}{set to \code{FALSE} to leave the \code{cppo} function as-is without automatically centering and scaling the result}
+\item{normcppo}{set to \code{TRUE} to modify the \code{cppo} function automatically centering and scaling the result}
 
 \item{pcontrast}{a list specifying contrasts that are to be given Gaussian prior distributions.  The predictor combinations specified in \code{pcontrast} are run through \code{\link[rms:gendata]{rms::gendata()}} so that contrasts are specified in units of original variables, and unspecified variables are set to medians or modes as saved by \code{\link[rms:datadist]{rms::datadist()}}.  Thanks to \code{Stan}, putting priors on combinations and transformations of model parameters has the same effect of putting different priors on the original parameters without figuring out how to do that.  The syntax used here allows specification of differences, double differences (e.g., interactions or nonlinearity), triple differences (e.g., to put contraints on nonlinear interactions), etc.  The requested predictor combinations must be named so they may be referred to inside \code{contrast}.  The syntax is \code{pcontrast=list(..., contrast=expression(...), mu=, sd=, weights=, ycut=, expand=)}.  \code{...} denotes one or more \code{list()}s with predictor combinations, and each \code{list()} must be named, e.g., \code{pcontrast=list(c1=list(sex='female'), c2=list(sex='male'))} to set up for a \code{female - male} contrast specified as \code{contrast=expression(c1 - c2)}.  The \code{c1 - c2} subtraction will operate on the design matrices generated by the covariate settings in the \code{list()}s.  For \verb{weights, ycut, expand} see \code{\link[rms:Xcontrast]{rms::Xcontrast()}} and \code{\link[rms:contrast]{rms::contrast.rms()}}.  \code{mu} is a vector of prior means associated with the rows of the stacked contrasts, and \code{sd} is a corresponding vector of Gaussian prior SDs.  When \code{mu} is not given it defaults to 0.0, and \code{sd} defaults to 100.0.  Values of \code{mu} and/or \code{sd} are repeated to the number of contrasts if they are of length 1.  Full examples are given \href{https://hbiostat.org/rmsc/genreg#bayes}{here}.}
+
+\item{npcontrast}{like \code{pcontrast} but applies to the non-proportional odds submodel in \code{ppo}.  Priors for the amount of departure from proportional odds are isolated from the priors of the "main effects" in \code{formula}.  The contrasts specified in \code{npcontrast} must include \code{ycut}, and \code{ycut} must vary over the elements of the contrasts to make sense.}
 
 \item{backend}{set to \code{cmdstan} to use \code{cmdstan} through the R \code{cmdstanr} package instead of the default \code{rstan}.  You can also specify this with a global option \code{rmsb.backend}.}
 
@@ -111,10 +111,10 @@ blrm(
 \item{...}{passed to \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}} or the \code{rcmdstan} optimizing function.  The \code{seed} parameter is a popular example.}
 }
 \value{
-an \code{rms} fit object of class \code{blrm}, \code{rmsb}, \code{rms} that also contains \code{rstan} or \code{cmdstanr} results under the name \code{rstan}.  In the \code{rstan} results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by \code{\link[=blrm]{blrm()}}.  With \code{method='optimizing'} a class-less list is return with these elements: \code{coefficients} (MLEs), \code{beta} (non-intercept parameters on the QR decomposition scale), \code{deviance} (-2 log likelihood), \code{return_code} (see \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}), and, if you specified \code{hessian=TRUE} to \code{\link[=blrm]{blrm()}}, the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the \code{xqrsd} object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the \code{keepsep} argument will have their original SDs.  The returned element \code{sampling_time} is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
+an \code{rms} fit object of class \code{blrm}, \code{rmsb}, \code{rms} that also contains \code{rstan} or \code{cmdstanr} results under the name \code{rstan}.  In the \code{rstan} results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by \code{\link[=blrm]{blrm()}}.  With \code{method='optimizing'} a class-less list is return with these elements: \code{coefficients} (MLEs), \code{beta} (non-intercept parameters on the QR decomposition scale), \code{deviance} (-2 log likelihood), \code{return_code} (see \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}), and, if you specified \code{hessian=TRUE} to \code{\link[=blrm]{blrm()}}, the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the \code{xqrsd} object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  The returned element \code{sampling_time} is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
 }
 \description{
-Uses \code{rstan} with pre-compiled Stan code, or \code{cmdstan} to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of \code{\link[=blrm]{blrm()}} for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero.  Priors are specified on contrasts so that they can be specified on a meaningful scalel and so that more complex patterns can be imposed.  Parameters that are not involved in any contrasts in \code{pcontrast} have non-informative priors.  Contrasts are automatically converted to the QR space used in Stan code.
+Uses \code{rstan} with pre-compiled Stan code, or \code{cmdstan} to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of \code{\link[=blrm]{blrm()}} for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero.  Priors are specified on contrasts so that they can be specified on a meaningful scale and so that more complex patterns can be imposed.  Parameters that are not involved in any contrasts in \code{pcontrast} or \code{npcontrast} have non-informative priors.  Contrasts are automatically converted to the QR space used in Stan code.
 }
 \details{
 The partial proportional odds model of Peterson and Harrell (1990) is implemented, and is invoked when the user specifies a second model formula as the \code{ppo} argument.  This formula has no left-hand-side variable, and has right-side variables that are a subset of those in \code{formula} specifying for which predictors the proportional odds assumption is relaxed.

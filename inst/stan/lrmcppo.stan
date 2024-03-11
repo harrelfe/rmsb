@@ -1,4 +1,7 @@
 // Based on lrmc.stan by Ben Goodrich
+// This is for the unconstrained partial PO model, which does not handle the
+// second set of contrasts for the non-PO part of the model
+
 functions {
   // pointwise log-likelihood contributions
   vector pw_log_lik(vector alpha, vector beta, matrix tau, vector gamma,

@@ -1,6 +1,6 @@
 ##' Bayesian Binary and Ordinal Logistic Regression
 ##'
-##' Uses `rstan` with pre-compiled Stan code, or `cmdstan` to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of [blrm()] for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero.  Priors are specified on contrasts so that they can be specified on a meaningful scalel and so that more complex patterns can be imposed.  Parameters that are not involved in any contrasts in `pcontrast` have non-informative priors.  Contrasts are automatically converted to the QR space used in Stan code.
+##' Uses `rstan` with pre-compiled Stan code, or `cmdstan` to get posterior draws of parameters from a binary logistic or proportional odds semiparametric ordinal logistic model.  The Stan code internally using the qr decompositon on the design matrix so that highly collinear columns of the matrix do not hinder the posterior sampling.  The parameters are transformed back to the original scale before returning results to R.   Design matrix columns are centered before running Stan, so Stan diagnostic output will have the intercept terms shifted but the results of [blrm()] for intercepts are for the original uncentered data.  The only prior distributions for regression betas are normal with mean zero.  Priors are specified on contrasts so that they can be specified on a meaningful scale and so that more complex patterns can be imposed.  Parameters that are not involved in any contrasts in `pcontrast` or `npcontrast` have non-informative priors.  Contrasts are automatically converted to the QR space used in Stan code.
 ##'
 ##' The partial proportional odds model of Peterson and Harrell (1990) is implemented, and is invoked when the user specifies a second model formula as the `ppo` argument.  This formula has no left-hand-side variable, and has right-side variables that are a subset of those in `formula` specifying for which predictors the proportional odds assumption is relaxed.
 ##'
@@ -15,20 +15,20 @@
 ##' See [here](https://hbiostat.org/R/examples/blrm/blrm.html) and [here](https://hbiostat.org/R/examples/blrm/blrmc.html) for multiple examples with results.
 ##' @param formula a R formula object that can use `rms` package enhancements such as the restricted interaction operator
 ##' @param ppo formula specifying the model predictors for which proportional odds is not assumed
-##' @param cppo a function that if present causes a constrained partial PO model to be fit.  The function specifies the values in the Gamma vector in Peterson and Harrell (1990) equation (6).  To make posterior sampling better behaved, the function should be scaled and centered.  This is done by wrapping `cppo` in a function that scales the `cppo` result before return the vector value.  See the `normcco` argument for how to prevent this.  The default normalization is based on the mean and standard deviation of the function values over the distribution of observed Y.  For getting predicted values and estimates post-[blrm()], `cppo` must not reference any functions that are not available at such later times.
-##' @param keepsep a single character string containing a regular expression applied to design matrix column names, specifying which columns for non-proportional odds terms are not to be QR-orthonormalized, so that priors for those columns apply to the original parameters.  This does not apply to the main part of the model.  `keepsep` is useful for treatment and treatment interaction terms.  For example `keepsep='treat'` will keep separate all design matrix columns containing `'treat'` in their names.  Some characters such as the caret used in polynomial regression terms will need to be escaped by a double backslash.
+##' @param cppo a function that if present causes a constrained partial PO model to be fit.  The function specifies the values in the Gamma vector in Peterson and Harrell (1990) equation (6).  Sometimes to make posterior sampling better behaved, the function should be scaled and centered.  This is done by wrapping `cppo` in a function that scales the `cppo` result before returning the vector value, when `normcppo` is `TRUE`. The default normalization is based on the mean and standard deviation of the function values over the distribution of observed Y.  For getting predicted values and estimates post-[blrm()], `cppo` must not reference any functions that are not available at such later times.
 ##' @param data a data frame; defaults to using objects from the calling environment
 ##' @param subset a logical vector or integer subscript vector specifying which subset of data whould be used
 ##' @param na.action default is `na.delete` to remove missings and report on them
-##' @param priorsdppo vector of prior standard deviations for non-proportional odds parameters.  The last element is the only one for which the SD corresponds to the original data scale.
+##' @param priorsdppo vector of prior standard deviations for non-proportional odds parameters.  The last element is the only one for which the SD corresponds to the original data scale.  This only applies to the unconstrained PPO model.
 ##' @param iprior specifies whether to use a Dirichlet distribution for the cell probabilities, which induce a more complex prior distribution for the intercepts (`iprior=0`, the default), non-informative priors (`iprior=1`) directly on the intercept parameters,  or to directly use a t-distribution with 3 d.f. and scale parameter `ascale` (`iprior=2`).
 ##' @param conc the Dirichlet distribution concentration parameter for the prior distribution of cell probabilities at covariate means.  The default is the reciprocal of 0.8 + 0.35 max(k, 3) where k is the number of Y categories.  The default is chosen to make the posterior mean of the intercepts more closely match the MLE.  For optimizing, the concentration parameter is always 1.0 to obtain results very close to the MLE for providing the posterior mode.
 ##' @param ascale scale parameter for the t-distribution for priors for the intercepts if `iprior=2`, defaulting to 1.0
 ##' @param psigma defaults to 1 for a half-t distribution with 4 d.f., location parameter `rsdmean` and scale parameter `rsdsd`.  Set `psigma=2` to use the exponential distribution.
 ##' @param rsdmean the assumed mean of the prior distribution of the standard deviation of random effects.  When `psigma=2` this is the mean of an exponential distribution and defaults to 1.  When `psigma=1` this is the mean of the half-t distribution and defaults to zero.
 ##' @param rsdsd applies only to `psigma=1` and is the scale parameter for the half t distribution for the SD of random effects, defaulting to 1.
-##' @param normcppo set to `FALSE` to leave the `cppo` function as-is without automatically centering and scaling the result
+##' @param normcppo set to `TRUE` to modify the `cppo` function automatically centering and scaling the result
 ##' @param pcontrast a list specifying contrasts that are to be given Gaussian prior distributions.  The predictor combinations specified in `pcontrast` are run through [rms::gendata()] so that contrasts are specified in units of original variables, and unspecified variables are set to medians or modes as saved by [rms::datadist()].  Thanks to `Stan`, putting priors on combinations and transformations of model parameters has the same effect of putting different priors on the original parameters without figuring out how to do that.  The syntax used here allows specification of differences, double differences (e.g., interactions or nonlinearity), triple differences (e.g., to put contraints on nonlinear interactions), etc.  The requested predictor combinations must be named so they may be referred to inside `contrast`.  The syntax is `pcontrast=list(..., contrast=expression(...), mu=, sd=, weights=, ycut=, expand=)`.  `...` denotes one or more `list()`s with predictor combinations, and each `list()` must be named, e.g., `pcontrast=list(c1=list(sex='female'), c2=list(sex='male'))` to set up for a `female - male` contrast specified as `contrast=expression(c1 - c2)`.  The `c1 - c2` subtraction will operate on the design matrices generated by the covariate settings in the `list()`s.  For `weights, ycut, expand` see [rms::Xcontrast()] and [rms::contrast.rms()].  `mu` is a vector of prior means associated with the rows of the stacked contrasts, and `sd` is a corresponding vector of Gaussian prior SDs.  When `mu` is not given it defaults to 0.0, and `sd` defaults to 100.0.  Values of `mu` and/or `sd` are repeated to the number of contrasts if they are of length 1.  Full examples are given [here](https://hbiostat.org/rmsc/genreg#bayes).
+##' @param npcontrast like `pcontrast` but applies to the non-proportional odds submodel in `ppo`.  Priors for the amount of departure from proportional odds are isolated from the priors of the "main effects" in `formula`.  The contrasts specified in `npcontrast` must include `ycut`, and `ycut` must vary over the elements of the contrasts to make sense.
 ##' @param backend set to `cmdstan` to use `cmdstan` through the R `cmdstanr` package instead of the default `rstan`.  You can also specify this with a global option `rmsb.backend`.
 ##' @param iter number of posterior samples per chain for [rstan::sampling()] to run, counting warmups
 ##' @param warmup number of warmup iterations to discard.  Default is `iter`/2.
@@ -47,7 +47,7 @@
 ##' @param file a file name for a `saveRDS`-created file containing or to contain the saved fit object.  If `file` is specified and the file does not exist, it will be created right before the fit object is returned, less the large `rstan` object.  If the file already exists, its stored `md5` hash string `datahash` fit object component is retrieved and compared to that of the current `rstan` inputs.  If the data to be sent to `rstan`, the priors, and all sampling and optimization options and stan code are identical, the previously stored fit object is immediately returned and no new calculatons are done.
 ##' @param sampling.args a list containing parameters to pass to [rstan::sampling()] or to the `rcmdstan` `sample` function, other than these arguments: `iter, warmup, chains, refresh, init` which are already arguments to `blrm`
 ##' @param ... passed to [rstan::optimizing()] or the `rcmdstan` optimizing function.  The `seed` parameter is a popular example.
-##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` or `cmdstanr` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  Those kept out by the `keepsep` argument will have their original SDs.  The returned element `sampling_time` is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
+##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` or `cmdstanr` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  The returned element `sampling_time` is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
 ##' @examples
 ##' \dontrun{
 ##'   getHdata(titanic3)
@@ -75,12 +75,12 @@
 ##' @seealso [print.blrm()], [blrmStats()], [stanDx()], [stanGet()], [coef.rmsb()], [vcov.rmsb()], [print.rmsb()], [coef.rmsb()]
 ##' @export
 ##' @md
-blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
+blrm <- function(formula, ppo=NULL, cppo=NULL,
                  data=environment(formula), subset, na.action=na.delete,
-								 priorsdppo=rep(100, pppo),
+                 priorsdppo=rep(100, pppo),
                  iprior=0, conc=1./(0.8 + 0.35 * max(k, 3)),
                  ascale=1., psigma=1, rsdmean=if(psigma == 1) 0 else 1,
-                 rsdsd=1, normcppo=TRUE, pcontrast=NULL,
+                 rsdsd=1, normcppo=FALSE, pcontrast=NULL, npcontrast=NULL,
                  backend=c('rstan', 'cmdstan'),
 								 iter=2000, warmup=iter/2, chains=4, refresh=0,
                  progress=if(refresh > 0) 'stan-progress.txt' else '',
@@ -196,7 +196,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   X <- X[, mmcolnames, drop=FALSE]
   colnames(X) <- atr$colnames
 
-  Z <- notransZn <- zatr <- zsformula <- NULL
+  Z <- zatr <- zsformula <- NULL
 
   if(length(ppo)) {
     ## Response variable is not present in data2
@@ -214,8 +214,6 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
     if(! all(mmcolnames %in% colnames(Z)) && length(alt)) mmcolnames <- alt
     Z <- Z[, mmcolnames, drop=FALSE]
     colnames(Z) <- zatr$colnames
-    notransZ  <- if(length(keepsep)) grep(keepsep, zatr$colnames)
-    notransZn <- zatr$colnames[notransZ]
   }
 
   zbar <- NULL
@@ -234,7 +232,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
   wqrX$X <- NULL
 
   if(length(ppo)) {
-    wqrZ   <- selectedQr(Z, center=TRUE, not=notransZ)
+    wqrZ   <- selectedQr(Z, center=TRUE)
     Zs     <- trimit(wqrZ$X)
     zbar   <- wqrZ$xbar
     wqrZ$X <- NULL
@@ -316,16 +314,21 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 
   d$Z <- if(pppo) Zs else matrix(0., nrow=n, ncol=0)
   d$q <- pppo
-  priorsdppo <- rep(priorsdppo, length=pppo)
-  d$sdsppo   <- as.array(priorsdppo)
 
-  d$cn <- 0L
-  d$C  <- d$cmus <- d$csds <- array(numeric(0))
+  
+  d$cn <- d$cn2 <- 0L
+  d$cmus <- d$cmus2 <- d$csds <- d$csds2 <- array(numeric(0))
   d$C  <- array(0., c(0, p))
+  d$C2 <- array(0., c(0, pppo))
 
   if(any(is.na(Xs)) | any(is.na(Y))) stop('program logic error')
 
   unconstrainedppo <- pppo > 0 && length(cppo) == 0
+  if(unconstrainedppo) {
+    priorsdppo <- rep(priorsdppo, length=pppo)
+    d$sdsppo   <- as.array(priorsdppo)
+  }
+
   fitter <- if(unconstrainedppo) 'lrmcppo'
             else if(iprior == 0) 'lrmconppo' else 'lrmconppot'
   if(unconstrainedppo) d$pposcore <- d$lpposcore <- NULL
@@ -343,9 +346,9 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
 
   ## See if previous fit had identical inputs and Stan code
   ## If using cmdstand, no need to even compile the code if so
-  ## Object d does not yet have C in it so use the precursor of C (pcontrast)
+  ## Object d does not yet have C in it so use the precursor of C (pcontrast, npcontrast)
   ## in hash digest
-  hashobj  <- list(d, pcontrast, inito, inits, iter, warmup, chains, loo, ppairs, method,
+  hashobj  <- list(d, pcontrast, npcontrast, inito, inits, iter, warmup, chains, loo, ppairs, method,
                    stancode, ...)
   datahash <- digest::digest(hashobj)
   if(length(prevhash) && prevhash == datahash) return(prevfit)
@@ -377,18 +380,18 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
                      na.action=atrx$na.action, fail=FALSE,
                      non.slopes=nrp, interceptRef=kmid,
                      sformula=sformula, zsformula=zsformula,
-                     pcontrast=pcontrast)
+                     pcontrast=pcontrast, npcontrast=npcontrast)
 
   fo <- fit.object
-  fo$coefficients <- rep(0., length(ylev) - 1 + ncol(X))
-  fo$tau          <- rep(0., pppo)
-  fo$draws <- 1L   # trick predictrms into bayes=TRUE
-  fo$param <- rbind(mean  =rep(0., length(ylev) - 1 + ncol(X) + pppo),
-                    median=rep(0., length(ylev) - 1 + ncol(X) + pppo))
-  class(fo) <- c('blrm', 'rmsb', 'rms')
 
-  if(length(pcontrast)) {
-    pc <- pcontrast   # Xcontrast is in rms
+  docon <- function(fo, X, wqr, pc, main) {
+    nint <- length(ylev) - 1
+    fo$coefficients <- rep(0., nint + ncol(X))
+    fo$tau          <- rep(0., pppo)
+    fo$draws <- 1L   # trick predictrms into bayes=TRUE
+    fo$param <- rbind(mean  =rep(0., nint + ncol(X) + pppo * main),
+                      median=rep(0., nint + ncol(X) + pppo * main))
+    class(fo) <- c('blrm', 'rmsb', 'rms')
     weights <- pc$weights
     if(! length(weights)) weights <- 'equal'
     expand  <- pc$expand
@@ -405,13 +408,11 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
       stop('predictor setting lists in pcontrast must be named')
     ## Compute design matrices to be used in contrasts
     XC <- lapply(pc,
-                 function(x) do.call(Xcontrast,
+                 function(x) do.call(Xcontrast,    # Xcontrast is in rms
                                      list(fo, a=x, weights=weights, ycut=ycut,
-                                          expand=expand)) )
+                                          expand=expand, Zmatrix=FALSE)) )
 
     ## Over expressions in contrasts evaluate them in XC
-    ww <- list(con=con, XC=XC, wqrX=wqrX)
-    saveRDS(ww, '/tmp/ww.rds')
     Contrast <- do.call(rbind, lapply(con, eval, XC))
     cn <- nrow(Contrast)
     if(! length(cmus)) cmus <- 0.
@@ -422,13 +423,37 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
       stop('mismatch between number of contrasts (', cn,
            '), length of mu (', length(cmus),
            ') and length of sd (', length(csds), ')')
-    d$cn   <- cn
-    Contrastt <- Contrast %*% wqrX$Rinv   # QR-transformed contrasts
+    Contrastt <- Contrast %*% wqr$Rinv   # QR-transformed contrasts
     d$C    <- as.array(Contrastt)
     d$cmus <- as.array(cmus)
     d$csds <- as.array(csds)
-    fit.object$Contrast  <- Contrast
-    fit.object$Contrastt <- Contrastt
+    list(cn=cn, Contrast=Contrast, C=as.array(Contrastt),
+         cmus=as.array(cmus), csds=as.array(csds) )
+  }
+
+  if(length(pcontrast)) {
+    w <- docon(fo, X, wqrX, pcontrast, main=TRUE)
+    fit.object$Contrast  <- w$Contrast
+    fit.object$Contrastt <- w$Contrastt
+    d$cn   <- w$cn
+    d$C    <- w$C
+    d$cmus <- w$cmus
+    d$csds <- w$csds
+  }
+
+  if(length(npcontrast)) {
+    fo$Design   <- zatr
+    fo$terms    <- zTerms
+    fo$assign   <- zass
+    fo$sformula <- zsformula
+    w <- docon(fo, Z, wqrZ, npcontrast, main=FALSE)
+    xless(w)
+    fit.object$nContrast  <- w$Contrast
+    fit.object$nContrastt <- w$Contrastt
+    d$cn2   <- w$cn
+    d$C2    <- w$C
+    d$cmus2 <- w$cmus
+    d$csds2 <- w$csds
   }
 
   if(method != 'sampling') {
@@ -666,9 +691,9 @@ blrm <- function(formula, ppo=NULL, cppo=NULL, keepsep=NULL,
            list(
              draws=draws, omega=omega,
              gammas=gammas, eps=epsmed,
-             param=param, priorsdppo=priorsdppo,
+             param=param,
              psigma=psigma, rsdmean=rsdmean, rsdsd=rsdsd, iprior=iprior,
-             notransZ=notransZn, xqrsd=xqrsd,
+             xqrsd=xqrsd,
              N=n, Ncens=Ncens, p=p,
              alphas=al, betas=be, taus=ta, tauInfo=tauInfo,
              xbar=xbar, zbar=zbar, Design=atr, zDesign=zatr,
@@ -998,6 +1023,12 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
                    title='Contrasts Given Priors')
     }
 
+  if(length(x$npcontrast)) {
+    k <- k + 1
+    z[[k]] <- list(type='print', list(deparse(x$npcontrast)),
+                   title='Contrasts Given Priors for Non-Proportional Odds Effects')
+    }
+
   rms::prModFit(x, title=title, z, digits=dec, coefs=coefs,
                 subtitle=subtitle, ...)
 }
@@ -1009,6 +1040,7 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
 ##' @param kint	This is only useful in a multiple intercept model such as the ordinal	logistic model. There to use to second of three intercepts, for example,	specify `kint=2`. The default is the middle	intercept corresponding to the median `y`.  You can specify `ycut` instead, and the intercept	corresponding to Y >= `ycut` will be used for `kint`.
 ##' @param ycut for an ordinal model specifies the Y cutoff to use in evaluating departures from proportional odds, when the constrained partial proportional odds model is used.  When omitted, `ycut`	is implied by `kint`.  The only time it is absolutely mandatory	to specify `ycut` is when computing an effect (e.g., odds ratio) at a level of the response variable that did not occur in the data.	This would only occur when the `cppo` function given to	`blrm` is a continuous function.  If `type='x'` and neither `kint` nor `ycut` are given, the partial PO part of the design matrix is not multiplied by the `cppo` function.  If `type='x'`, the number of predicted observations is 1, `ycut` is longer than 1, and `zcppo` is `TRUE`, predictions are duplicated to the length of `ycut` as it is assumed that the user wants to see the effect of varying `ycut`, e.g., to see cutoff-specific odds ratios.
 ##' @param zcppo applies only to `type='x'` for a constrained partial PO model.  Set to `FALSE` to prevent multiplication of Z matrix by `cppo(ycut)`.
+##' @param Zmatrix set to `FALSE` to exclude the partial PO Z matrix from the returned design matrix if `type='x'`
 ##' @param fun a function to evaluate on the linear predictor, e.g. a function created by [Mean()] or [Quantile()]
 ##' @param funint set to `FALSE` if `fun` is not a function such as the result of [Mean()], [Quantile()], or [ExProb()] that	contains an `intercepts` argument
 ##' @param posterior.summary set to `'median'` or `'mode'` to use posterior median/mode instead of mean. For some `type`s set to `'all'` to compute the needed quantity for all posterior draws, and return one more dimension in the array.
@@ -1025,7 +1057,7 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
 ##' @export
 predict.blrm <-
   function(object, ...,
-           kint=NULL, ycut=NULL, zcppo=TRUE,
+           kint=NULL, ycut=NULL, zcppo=TRUE, Zmatrix=TRUE,
            fun=NULL, funint=TRUE,
            type=c("lp","fitted","fitted.ind","mean","x","data.frame",
                   "terms", "cterms", "ccterms", "adjto", "adjto.data.frame",
@@ -1059,7 +1091,7 @@ predict.blrm <-
   pppo <- object$pppo
   if(pppo == 0) zcppo <- FALSE
 
-  if(type == 'x' && pppo == 0)
+  if(type == 'x' && (pppo == 0 || ! Zmatrix))
     return(predictrms(object, ..., type='x'))
 
   if(type %in% c('data.frame', 'terms', 'cterms', 'ccterms',
