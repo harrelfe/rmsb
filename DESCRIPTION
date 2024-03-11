@@ -30,7 +30,7 @@ RoxygenNote: 7.3.1
 Biarch: true
 Depends: 
     R (>= 3.4.0),
-    rms (>= 6.7-1)
+    rms (>= 6.8-0)
 Imports: 
     methods,
     Rcpp (>= 0.12.0),
