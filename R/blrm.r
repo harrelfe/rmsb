@@ -102,7 +102,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
     rmsbdir <- getOption('rmsbdir')
     if(! length(rmsbdir)) {
       rmsbdir <- '~/.rmsb'
-      if(! getOption('rmsbmsg', TRUE))
+      if(getOption('rmsbmsg', TRUE))
         message('Compiled Stan code will be stored in ~/.rmsb.  Use options(rmsbdir=) to override.')
     }
     dir.create(rmsbdir, showWarnings=FALSE)
