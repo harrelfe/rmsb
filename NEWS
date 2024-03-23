@@ -1,3 +1,7 @@
+Changes for 1.1-1 (2024-03-22)
+   * blrm: added argument showopt to show Stan optimizer steps, default is FALSE
+   * blrm: added options(rmsbmsg=FALSE) to allow the user to suppress information messages
+
 Changes for 1.1-0 (2024-03-11)
    * Store cppo as deparsed for opt object from optimization (MLE) to prevent huge environment from being carried along
    * blrm: Non-downward compatible changes: removed keepsep argument
