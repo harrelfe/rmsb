@@ -74,7 +74,7 @@ data {
   matrix[N, p] X;     // matrix of CENTERED predictors
 	matrix[N, q] Z;     // matrix of CENTERED PPO predictors
 	matrix[cn, p] C;    // contrasts
-	matrix[cn2, p] C2;  // non-PO contrasts corresponding to Z
+	matrix[cn2, q] C2;  // non-PO contrasts corresponding to Z
   array[N, 2] int<lower = 1, upper = k> y; // 2-column outcome on 1 ... k
 	vector[lpposcore] pposcore; // scores for constrained partial PO
 	int<lower = 0> Nc;  // number of clusters (0=no clustering)
