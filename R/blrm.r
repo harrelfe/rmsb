@@ -794,14 +794,11 @@ blrmStats <- function(fit, ns=400, prob=0.95, pl=FALSE,
   ybin  <- length(ylev) == 2
   stats <- matrix(NA, nrow=ns, ncol=8)
   colnames(stats) <- c('Dxy', 'C', 'g', 'gp', 'B', 'EV', 'v', 'vp')
-  dxy <- if(length(ylev) == 2)
-           function(x, y) somers2(x, y)['Dxy']
-         else
-           function(x, y) {
-             con <- survival::survConcordance.fit(survival::Surv(y), x)
-             conc <- con['concordant']; disc <- con['discordant']
-             - (conc - disc) / (conc + disc)
-             }
+  dxy <- function(x, y) {
+    con  <- survival::concordancefit(survival::Surv(y), x)$count
+    conc <- con['concordant']; disc <- con['discordant']
+    (conc - disc) / (conc + disc)
+    }
   brier <- function(x, y) mean((x - y) ^ 2)
   br2   <- function(p) var(p) / (var(p) + sum(p * (1 - p)) / length(p))
 
