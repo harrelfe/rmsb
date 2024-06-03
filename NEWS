@@ -1,4 +1,4 @@
-Changes for 1.1-1 (2024-05-18)
+Changes for 1.1-1 (2024-05-26)
    * blrm: added argument showopt to show Stan optimizer steps, default is FALSE
    * blrm: added options(rmsbmsg=FALSE) to allow the user to suppress information messages
    * lrmconppot.stan: fixed bug for dim(C2) p -> q
