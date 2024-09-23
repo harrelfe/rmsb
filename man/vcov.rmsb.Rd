@@ -28,7 +28,7 @@ Computes the variance-covariance matrix from the posterior draws by compute the 
 }
 }
 \seealso{
-\link{vcov.rms}
+\code{\link[rms:rmsMisc]{rms::vcov.rms()}}
 }
 \author{
 Frank Harrell

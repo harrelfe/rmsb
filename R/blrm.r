@@ -319,7 +319,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
   d$Z <- if(pppo) Zs else matrix(0., nrow=n, ncol=0)
   d$q <- pppo
 
-  
+
   d$cn <- d$cn2 <- 0L
   d$cmus <- d$cmus2 <- d$csds <- d$csds2 <- array(numeric(0))
   d$C  <- array(0., c(0, p))
@@ -592,7 +592,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
       namtau <- paste(xt, 'x f(y)')
       taus   <- draws[, ta, drop=FALSE]
       taus   <- taus %*% t(wqrZ$Rinv)
-               
+
       tauInfo <- data.frame(name=namtau, x=xt)
       ## Make sure mtaus is not referenced later when length(cppo) > 0
     }
@@ -714,7 +714,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
              opt=opt, diagnostics=diagnostics,
              iter=iter, chains=chains, stancode=stancode, datahash=datahash,
              backend=backend, sampling_time=sampling_time)  )
-  
+
   if(iprior == 0) res$conc   <- conc
   if(iprior == 2) res$ascale <- ascale
 	class(res) <- c('blrm', 'rmsb', 'rms')
@@ -1041,13 +1041,13 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
 ##' Make predictions from a [blrm()] fit
 ##'
 ##' Predict method for [blrm()] objects
-##' @param object,...,type,se.fit,codes see [predict.lrm()]
+##' @param object,...,type,se.fit,codes see [rms::predict.lrm()]
 ##' @param kint	This is only useful in a multiple intercept model such as the ordinal	logistic model. There to use to second of three intercepts, for example,	specify `kint=2`. The default is the middle	intercept corresponding to the median `y`.  You can specify `ycut` instead, and the intercept	corresponding to Y >= `ycut` will be used for `kint`.
 ##' @param ycut for an ordinal model specifies the Y cutoff to use in evaluating departures from proportional odds, when the constrained partial proportional odds model is used.  When omitted, `ycut`	is implied by `kint`.  The only time it is absolutely mandatory	to specify `ycut` is when computing an effect (e.g., odds ratio) at a level of the response variable that did not occur in the data.	This would only occur when the `cppo` function given to	`blrm` is a continuous function.  If `type='x'` and neither `kint` nor `ycut` are given, the partial PO part of the design matrix is not multiplied by the `cppo` function.  If `type='x'`, the number of predicted observations is 1, `ycut` is longer than 1, and `zcppo` is `TRUE`, predictions are duplicated to the length of `ycut` as it is assumed that the user wants to see the effect of varying `ycut`, e.g., to see cutoff-specific odds ratios.
 ##' @param zcppo applies only to `type='x'` for a constrained partial PO model.  Set to `FALSE` to prevent multiplication of Z matrix by `cppo(ycut)`.
 ##' @param Zmatrix set to `FALSE` to exclude the partial PO Z matrix from the returned design matrix if `type='x'`
-##' @param fun a function to evaluate on the linear predictor, e.g. a function created by [Mean()] or [Quantile()]
-##' @param funint set to `FALSE` if `fun` is not a function such as the result of [Mean()], [Quantile()], or [ExProb()] that	contains an `intercepts` argument
+##' @param fun a function to evaluate on the linear predictor, e.g. a function created by [Mean.blrm()] or [Quantile.blrm()]
+##' @param funint set to `FALSE` if `fun` is not a function such as the result of [Mean.blrm()], [Quantile.blrm()], or [ExProb.blrm()] that	contains an `intercepts` argument
 ##' @param posterior.summary set to `'median'` or `'mode'` to use posterior median/mode instead of mean. For some `type`s set to `'all'` to compute the needed quantity for all posterior draws, and return one more dimension in the array.
 ##' @param cint probability for highest posterior density interval.  Set to `FALSE` to suppress calculation of the interval.
 ##' @return a data frame,  matrix, or vector with posterior summaries for the requested quantity, plus an attribute `'draws'` that has all the posterior draws for that quantity.  For `type='fitted'` and `type='fitted.ind'` this attribute is a 3-dimensional array representing draws x observations generating predictions x levels of Y.
@@ -1056,7 +1056,7 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
 ##'   f <- blrm(...)
 ##'   predict(f, newdata, type='...', posterior.summary='median')
 ##' }
-##' @seealso [predict.lrm()]
+##' @seealso [rms::predict.lrm()]
 ##' @author Frank Harrell
 ##' @md
 ##' @export
@@ -1217,8 +1217,8 @@ predict.blrm <-
   ## Get cumulative probability function used
   link    <- object$link
   cumprob <- rms::probabilityFamilies[[link]]$cumprob
-
-  if(ns == 1) return(cumprob(ints + betas %*% t(X)))  # binary logistic model
+  # Handle binary logistic model
+  if(ns == 1) return(cumprob(sweep(betas %*% t(X), 1, ints[, 1], '+')))
 
   cnam  <- cn[1:ns]
   # First intercept corresponds to second distinct Y value

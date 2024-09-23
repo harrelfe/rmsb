@@ -113,7 +113,7 @@ coef.rmsb <- function(object, stat=c('mean', 'median', 'mode'), ...) {
 ##'   f <- blrm(...)
 ##'   v <- vcov(f)
 ##' }
-##' @seealso [vcov.rms]
+##' @seealso [rms::vcov.rms()]
 ##' @author Frank Harrell
 ##' @export
 vcov.rmsb <- function(object, regcoef.only=TRUE,

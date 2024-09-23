@@ -22,7 +22,7 @@
 )
 }
 \arguments{
-\item{object, ..., type, se.fit, codes}{see \code{\link[=predict.lrm]{predict.lrm()}}}
+\item{object, ..., type, se.fit, codes}{see \code{\link[rms:predict.lrm]{rms::predict.lrm()}}}
 
 \item{kint}{This is only useful in a multiple intercept model such as the ordinal    logistic model. There to use to second of three intercepts, for example,    specify \code{kint=2}. The default is the middle    intercept corresponding to the median \code{y}.  You can specify \code{ycut} instead, and the intercept    corresponding to Y >= \code{ycut} will be used for \code{kint}.}
 
@@ -32,9 +32,9 @@
 
 \item{Zmatrix}{set to \code{FALSE} to exclude the partial PO Z matrix from the returned design matrix if \code{type='x'}}
 
-\item{fun}{a function to evaluate on the linear predictor, e.g. a function created by \code{\link[=Mean]{Mean()}} or \code{\link[=Quantile]{Quantile()}}}
+\item{fun}{a function to evaluate on the linear predictor, e.g. a function created by \code{\link[=Mean.blrm]{Mean.blrm()}} or \code{\link[=Quantile.blrm]{Quantile.blrm()}}}
 
-\item{funint}{set to \code{FALSE} if \code{fun} is not a function such as the result of \code{\link[=Mean]{Mean()}}, \code{\link[=Quantile]{Quantile()}}, or \code{\link[=ExProb]{ExProb()}} that    contains an \code{intercepts} argument}
+\item{funint}{set to \code{FALSE} if \code{fun} is not a function such as the result of \code{\link[=Mean.blrm]{Mean.blrm()}}, \code{\link[=Quantile.blrm]{Quantile.blrm()}}, or \code{\link[=ExProb.blrm]{ExProb.blrm()}} that    contains an \code{intercepts} argument}
 
 \item{posterior.summary}{set to \code{'median'} or \code{'mode'} to use posterior median/mode instead of mean. For some \code{type}s set to \code{'all'} to compute the needed quantity for all posterior draws, and return one more dimension in the array.}
 
@@ -53,7 +53,7 @@ Predict method for \code{\link[=blrm]{blrm()}} objects
 }
 }
 \seealso{
-\code{\link[=predict.lrm]{predict.lrm()}}
+\code{\link[rms:predict.lrm]{rms::predict.lrm()}}
 }
 \author{
 Frank Harrell

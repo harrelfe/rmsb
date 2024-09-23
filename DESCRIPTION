@@ -1,7 +1,7 @@
 Package: rmsb
 Title: Bayesian Regression Modeling Strategies
-Version: 1.1-1
-Date: 2024-05-26
+Version: 1.1-2
+Date: 2024-09-23
 Authors@R: 
     c(person(given = "Frank",
            family = "Harrell",
@@ -26,7 +26,7 @@ License: GPL (>= 3)
 Encoding: UTF-8
 URL: https://hbiostat.org/R/rmsb/
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.2
 Biarch: true
 Depends: 
     R (>= 3.4.0),

@@ -24,7 +24,7 @@ stackMI(
 
 \item{fitter}{a Bayesian fitter}
 
-\item{xtrans}{an object created by \code{transcan}, \code{\link{aregImpute}}, or \code{\link[mice]{mice}}}
+\item{xtrans}{an object created by \code{transcan}, \code{\link[Hmisc]{aregImpute}}, or \code{\link[mice]{mice}}}
 
 \item{data}{data frame}
 
