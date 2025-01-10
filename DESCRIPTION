@@ -1,7 +1,7 @@
 Package: rmsb
 Title: Bayesian Regression Modeling Strategies
 Version: 1.1-2
-Date: 2024-09-23
+Date: 2025-01-12
 Authors@R: 
     c(person(given = "Frank",
            family = "Harrell",
@@ -30,7 +30,7 @@ RoxygenNote: 7.3.2
 Biarch: true
 Depends: 
     R (>= 3.4.0),
-    rms (>= 6.8-0)
+    rms (>= 7.0-0)
 Imports: 
     methods,
     Rcpp (>= 0.12.0),
