@@ -1,5 +1,6 @@
-Changes for 1.1-2 (2024-09-23)
+Changes for 1.1-2 (2025-01-12)
    * predict.blrm: fixed type='fitted' for binary Y; thanks Christian Hametner: <https://discourse.datamethods.org/t/bayesian-regression-modeling-strategies/6105/99>
+   * removed Ocens function which is now in rms 7.0
 
 Changes for 1.1-1 (2024-07-07)
    * blrm: added argument showopt to show Stan optimizer steps, default is FALSE
