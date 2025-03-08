@@ -107,11 +107,11 @@ blrm(
 
 \item{debug}{set to \code{TRUE} to output timing and progress information to /tmp/debug.txt}
 
-\item{sampling.args}{a list containing parameters to pass to \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} or to the \code{rcmdstan} \code{sample} function, other than these arguments: \verb{iter, warmup, chains, refresh, init} which are already arguments to \code{blrm}}
+\item{sampling.args}{a list containing parameters to pass to \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} or to the \code{rcmdstan} \code{sample} function, other than these arguments: \verb{iter, warmup, chains, refresh, init} which are already arguments to \code{blrm}.  A good use of this is \code{sampling.args=list(seed=3)} to get reproducible sampling.}
 
 \item{showopt}{set to \code{TRUE} to show Stan optimizer output}
 
-\item{...}{passed to \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}} or the \code{rcmdstan} optimizing function.  The \code{seed} parameter is a popular example.}
+\item{...}{passed to \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}} or the \code{rcmdstan} optimizing function.  \code{sampling.args} is usually used instead.}
 }
 \value{
 an \code{rms} fit object of class \code{blrm}, \code{rmsb}, \code{rms} that also contains \code{rstan} or \code{cmdstanr} results under the name \code{rstan}.  In the \code{rstan} results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by \code{\link[=blrm]{blrm()}}.  With \code{method='optimizing'} a class-less list is return with these elements: \code{coefficients} (MLEs), \code{beta} (non-intercept parameters on the QR decomposition scale), \code{deviance} (-2 log likelihood), \code{return_code} (see \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}}), and, if you specified \code{hessian=TRUE} to \code{\link[=blrm]{blrm()}}, the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the \code{xqrsd} object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  The returned element \code{sampling_time} is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
@@ -128,7 +128,7 @@ The Peterson and Harrell (1990) constrained partial proportional odds is also im
 
 When using the \code{cmdstan} backend, \code{cmdstanr} will need to compile the Stan code once per computer, only recompiling the code when the Stan source code changes.  By default the compiled code is stored in directory \code{.rmsb} under your home directory.  Specify \code{options(rmsbdir=)} to specify a different location.  You should specify \code{rmsbdir} to be in a project-specific location if you want to archive code for old projects.
 
-If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process, remove the \code{file} before running \code{blrm}.
+If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process when you did not specify \code{sampling.args(seed=...)}, remove the \code{file} before running \code{blrm}.
 
 Set \code{options(rmsbmsg=FALSE)} to suppress certain information messages.
 

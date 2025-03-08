@@ -10,7 +10,7 @@
 ##'
 ##' When using the `cmdstan` backend, `cmdstanr` will need to compile the Stan code once per computer, only recompiling the code when the Stan source code changes.  By default the compiled code is stored in directory `.rmsb` under your home directory.  Specify `options(rmsbdir=)` to specify a different location.  You should specify `rmsbdir` to be in a project-specific location if you want to archive code for old projects.
 ##'
-##' If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process, remove the `file` before running `blrm`.
+##' If you want to run MCMC sampling even when no inputs or Stan code have changed, i.e., to use a different random number seed for the sampling process when you did not specify `sampling.args(seed=...)`, remove the `file` before running `blrm`.
 ##'
 ##' Set `options(rmsbmsg=FALSE)` to suppress certain information messages.
 ##'
@@ -47,9 +47,9 @@
 ##' @param standata set to `TRUE` to return the Stan data list and not run the model
 ##' @param debug set to `TRUE` to output timing and progress information to /tmp/debug.txt
 ##' @param file a file name for a `saveRDS`-created file containing or to contain the saved fit object.  If `file` is specified and the file does not exist, it will be created right before the fit object is returned, less the large `rstan` object.  If the file already exists, its stored `md5` hash string `datahash` fit object component is retrieved and compared to that of the current `rstan` inputs.  If the data to be sent to `rstan`, the priors, and all sampling and optimization options and stan code are identical, the previously stored fit object is immediately returned and no new calculatons are done.
-##' @param sampling.args a list containing parameters to pass to [rstan::sampling()] or to the `rcmdstan` `sample` function, other than these arguments: `iter, warmup, chains, refresh, init` which are already arguments to `blrm`
+##' @param sampling.args a list containing parameters to pass to [rstan::sampling()] or to the `rcmdstan` `sample` function, other than these arguments: `iter, warmup, chains, refresh, init` which are already arguments to `blrm`.  A good use of this is `sampling.args=list(seed=3)` to get reproducible sampling.
 ##' @param showopt set to `TRUE` to show Stan optimizer output
-##' @param ... passed to [rstan::optimizing()] or the `rcmdstan` optimizing function.  The `seed` parameter is a popular example.
+##' @param ... passed to [rstan::optimizing()] or the `rcmdstan` optimizing function.  `sampling.args` is usually used instead.
 ##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` or `cmdstanr` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  The returned element `sampling_time` is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
 ##' @examples
 ##' \dontrun{
@@ -179,10 +179,11 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
   Ncens   <- c(left=0, right=0, interval=0)
 
   if(! isOcens) {
-    Y  <- Ocens(Y)
+    Y  <- Ocens2ord(Ocens(Y))
     ay <- attributes(Y)
     k  <- length(ay$levels)
   } else {
+    Y  <- Ocens2ord(Y)
     ay <- attributes(Y)
     k  <- length(ay$levels)
     a  <- Y[, 1]
@@ -1218,7 +1219,7 @@ predict.blrm <-
 
   ## Get cumulative probability function used
   link    <- object$link
-  cumprob <- rms::probabilityFamilies[[link]]$cumprob
+  cumprob <- eval(rms::probabilityFamilies[[link]][1])
   # Handle binary logistic model
   if(ns == 1) return(cumprob(sweep(betas %*% t(X), 1, ints[, 1], '+')))
 
@@ -1339,7 +1340,7 @@ Mean.blrm <- function(object, codes=FALSE,
 
   ## Get cumulative probability function used
   link    <- object$link
-  cumprob <- probabilityFamilies[[link]]$cumprob
+  cumprob <- eval(probabilityFamilies[[link]][1])
 
   cof <- coef(object, stat=posterior.summary)
   intercepts <- cof[1 : ns]
@@ -1403,8 +1404,8 @@ Quantile.blrm <- function(object, codes=FALSE,
   ## Get cumulative probability function used
   link    <- object$link
   pfam    <- rms::probabilityFamilies[[link]]
-  cumprob <- pfam$cumprob
-  inverse <- pfam$inverse
+  cumprob <- eval(pfam[1])
+  inverse <- eval(pfam[2])
 
   cof        <- coef(object, stat=posterior.summary)
   intercepts <- cof[1 : ns]
@@ -1480,7 +1481,7 @@ ExProb.blrm <- function(object,
   ## Get cumulative probability function used
   link    <- object$link
   pfam    <- rms::probabilityFamilies[[link]]
-  cumprob <- pfam$cumprob
+  cumprob <- eval(pfam[1])
 
   ylevels    <- object$ylevels
   cof        <- coef(object, stat=posterior.summary)
