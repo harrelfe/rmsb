@@ -406,7 +406,7 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
     con     <- pc$contrast
     if(! length(con))        stop('must include contrast in pcontrast')
     if(! is.expression(con)) stop('contrast must be expression()')
-    pc[c('weights', 'expand', 'mu', 'sd', 'contrast')] <- NULL
+    pc[c('weights', 'expand', 'mu', 'sd', 'contrast', 'ycut')] <- NULL
     cnam <- names(pc)
     if(! length(cnam) || any(cnam == ''))
       stop('predictor setting lists in pcontrast must be named')
@@ -489,10 +489,10 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
       ta     <- nam[grep('tau\\[',   nam)]
       alphas <- alphasign * parm[al]
       betas  <- parm[be]
-      if(getOption('blrmdebugqr', FALSE)) prn(llist(betas, wqrX$Rinv), fi='/tmp/z')
+      if(getOption('blrmdebugqr', FALSE)) prn(llist(betas, wqrX$Rinv), file='/tmp/z')
       betas  <- matrix(betas, nrow=1) %*% t(wqrX$Rinv)
       names(betas)  <- atr$colnames
-      if(getOption('blrmdebugqr', FALSE)) prn(betas, fi='/tmp/z')
+      if(getOption('blrmdebugqr', FALSE)) prn(betas, file='/tmp/z')
       alphas <- alphas - sum(betas * xbar)
       if(pppo) {
         if(length(cppo)) { # constrained PPO model
@@ -1087,7 +1087,7 @@ predict.blrm <-
 
   ylevels   <- object$ylevels
   ycutgiven <- length(ycut) > 0
-  if(kintgiven && ycutgiven) stop('may only specify one of kint, ycut')
+  # if(kintgiven && ycutgiven) stop('may only specify one of kint, ycut')
   if(! ycutgiven) ycut <- ylevels[kint + 1]
   if(ycutgiven) {
     if(type == 'lp' && length(ycut) > 1)

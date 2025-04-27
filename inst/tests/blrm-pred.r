@@ -1,5 +1,5 @@
 require(rmsb)
-stanSet()
+cstanSet()
 set.seed(1)
 n <- 100
 x1 <- rnorm(n)

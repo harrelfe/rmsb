@@ -1,7 +1,5 @@
 require(rmsb)
-options(mc.cores=parallel::detectCores() - 1,
-        rmsb.backend='cmdstan', rmsbdir='~/.rmsb')
-# cmdstanr::set_cmdstan_path('/usr/local/bin/cmdstan-2.33.1')
+cstanSet()
 set.seed(1)
 x <- rnorm(100)
 x2 <- sample(c('a', 'b', 'c'), 100, TRUE)
@@ -19,15 +17,15 @@ ggplot(Predict(f, x, x2))
 pcon <- function(sd) list(sd=sd, c1=.(x=-1), c2=.(x=0), c3=.(x=1),
                           contrast=expression(0.5 * (c1 + c3) - c2))
 
-g <- blrm(y ~ pol(x, 2) + x2, keepsep='x', pcontrast=pcon(3))
-h <- blrm(y ~ pol(x, 2) + x2, keepsep='x', pcontrast=pcon(0.3))
+g <- blrm(y ~ pol(x, 2) + x2, pcontrast=pcon(3))
+h <- blrm(y ~ pol(x, 2) + x2, pcontrast=pcon(0.3))
 
 # Force litle nonlinearity AND tiny difference between x2=b and x2=c
 pcon <- function(sd) list(sd=sd, c1=.(x=-1), c2=.(x=0), c3=.(x=1),
                           c4=.(x2='b'), c5=.(x2='c'),
                           contrast=expression(0.5 * (c1 + c3) - c2,
                                               c4 - c5) )
-i <- blrm(y ~ pol(x, 2) + x2, keepsep='x', pcontrast=pcon(c(0.1, 0.1)))
+i <- blrm(y ~ pol(x, 2) + x2, pcontrast=pcon(c(0.1, 0.1)))
 i$Contrast
 ff=tempfile()
 i <- blrm(y ~ pol(x, 2) + x2, pcontrast=pcon(c(0.1, 0.1)), file=ff)
@@ -54,7 +52,8 @@ pcon <- function(sd) list(sd=sd, c1=.(x=-1), c2=.(x=0), c3=.(x=1),
                                               c4 - c5),
                           ycut=1)
 
-f <- blrm(y ~ pol(x, 2) + x2, ~ x2, cppo=function(y) y,
+f <- blrm(y ~ pol(x, 2) + x2,
+          ~ x2,
+          cppo=function(y) y,
           pcontrast=pcon(0.3),
           file='/tmp/fc.rds')
-

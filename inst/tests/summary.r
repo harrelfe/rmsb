@@ -1,4 +1,5 @@
 require(rmsb)
+cstanSet()
 d <- data.frame(HE6=as.integer(cut2(sample(1:100, 200, replace = TRUE), g=10)),
                   Age = sample(1:85, 200, replace = TRUE), EORTC = sample(1:100, 200, replace = TRUE),
                   linf=rbinom(200, 1,.5),

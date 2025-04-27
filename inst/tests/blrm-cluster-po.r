@@ -1,4 +1,5 @@
 require(rmsb)
+cstanSet()
 n <- 500   # subjects
 set.seed(2)
 re <- rnorm(n) * 4

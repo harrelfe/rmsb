@@ -1,7 +1,7 @@
 require(rmsb)
-stanSet()
+cstanSet()
 set.seed(11)
-n <- 200000
+n <- 1000
 x <- rnorm(n)
 y <- as.integer(cut2(x + rnorm(n), g=6))
 f <- orm(y ~ x)

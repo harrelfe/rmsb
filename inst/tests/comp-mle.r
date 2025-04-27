@@ -3,6 +3,7 @@
 # and high frequencies in y
 
 require(rmsb)
+cstanSet()
 set.seed(1)
 y <- rep(1:10, c(2, 6, 3, 12, 4, 16, 5, 24, 6, 34))
 n <- length(y)

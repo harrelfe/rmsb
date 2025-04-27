@@ -1,5 +1,5 @@
 require(rmsb)
-stanSet()
+cstanSet()
 set.seed(1)
 x <- rnorm(10)
 y <- x + rnorm(10)
@@ -23,7 +23,7 @@ g <- function(y) y==5
 standata <- blrm(y ~ tx, ~ tx, cppo=g, data=d, standata=TRUE)
 f <- blrm(y ~ tx, ~ tx, cppo=g, data=d, method='opt')
 # Compute the treatment effect log(OR) for y=1, 2, 3, 4, 5
-h <- f$cppo     # normalized version of f
+h <- eval(parse(text=f$cppo))     # normalized version of f
 k <- coef(f)
 k
 # Before intercept correction for tau * zbar:

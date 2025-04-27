@@ -1,7 +1,7 @@
 ## Test partial proportional odds model where the tau matrix is not square
 require(rmsb)
 require(VGAM)
-stanSet()
+cstanSet()
 set.seed(1)
 n <- 300
 x1 <- rnorm(n)
