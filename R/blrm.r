@@ -78,62 +78,71 @@
 ##' @seealso [print.blrm()], [blrmStats()], [stanDx()], [stanGet()], [coef.rmsb()], [vcov.rmsb()], [print.rmsb()], [coef.rmsb()]
 ##' @export
 ##' @md
-blrm <- function(formula, ppo=NULL, cppo=NULL,
-                 data=environment(formula), subset, na.action=na.delete,
-                 priorsdppo=rep(100, pppo),
-                 iprior=0, conc=1./(0.8 + 0.35 * max(k, 3)),
-                 ascale=1., psigma=1, rsdmean=if(psigma == 1) 0 else 1,
-                 rsdsd=1, normcppo=FALSE, pcontrast=NULL, npcontrast=NULL,
-                 backend=c('rstan', 'cmdstan'),
-								 iter=2000, warmup=iter/2, chains=4, refresh=0,
-                 progress=if(refresh > 0) 'stan-progress.txt' else '',
-								 x=TRUE, y=TRUE, loo=n <= 1000, ppairs=NULL,
-                 method=c('both', 'sampling', 'optimizing'),
-                 inito=if(length(ppo)) 0 else 'random', inits=inito,
-                 standata=FALSE, file=NULL, debug=FALSE,
-                 sampling.args=NULL, showopt=FALSE, ...) {
+blrm <- function(formula, ppo = NULL, cppo = NULL,
+                 data = environment(formula), subset, na.action = na.delete,
+                 priorsdppo = rep(100, pppo),
+                 iprior = 0, conc = 1. / (0.8 + 0.35 * max(k, 3)),
+                 ascale = 1., psigma = 1, rsdmean = if (psigma == 1) 0 else 1,
+                 rsdsd = 1, normcppo = FALSE, pcontrast = NULL, npcontrast = NULL,
+                 backend = c("rstan", "cmdstan"),
+                 iter = 2000, warmup = iter / 2, chains = 4, refresh = 0,
+                 progress = if (refresh > 0) "stan-progress.txt" else "",
+                 x = TRUE, y = TRUE, loo = n <= 1000, ppairs = NULL,
+                 method = c("both", "sampling", "optimizing"),
+                 inito = if (length(ppo)) 0 else "random", inits = inito,
+                 standata = FALSE, file = NULL, debug = FALSE,
+                 sampling.args = NULL, showopt = FALSE, ...) {
+  call <- match.call()
+  method <- match.arg(method)
+  backend <- if (missing(backend)) {
+    getOption("rmsb.backend", "rstan")
+  } else {
+    match.arg(backend)
+  }
 
-  call    <- match.call()
-  method  <- match.arg(method)
-  backend <- if(missing(backend))
-               getOption('rmsb.backend', 'rstan') else match.arg(backend)
-
-  if(backend == 'cmdstan') {
-    rmsbdir <- getOption('rmsbdir')
-    if(! length(rmsbdir)) {
-      rmsbdir <- '~/.rmsb'
-      if(getOption('rmsbmsg', TRUE))
-        message('Compiled Stan code will be stored in ~/.rmsb.  Use options(rmsbdir=) to override.')
+  if (backend == "cmdstan") {
+    rmsbdir <- getOption("rmsbdir")
+    if (!length(rmsbdir)) {
+      rmsbdir <- "~/.rmsb"
+      if (getOption("rmsbmsg", TRUE)) {
+        message("Compiled Stan code will be stored in ~/.rmsb.  Use options(rmsbdir=) to override.")
+      }
     }
-    dir.create(rmsbdir, showWarnings=FALSE)
+    dir.create(rmsbdir, showWarnings = FALSE)
   }
 
   ## Use modelData because model.frame did not work
   ## correctly when called the second time for ppo, and because of
   ## problems evaluating subset
 
-  callenv <- parent.frame()   # don't delay these evaluations
-  subset  <- if(! missing(subset )) eval(substitute(subset),  data, callenv)
+  callenv <- parent.frame() # don't delay these evaluations
+  subset <- if (!missing(subset)) eval(substitute(subset), data, callenv)
 
   data <- rms::modelData(data, formula, ppo,
-              subset = subset,
-              na.action=na.action, callenv=callenv)
-    if(length(ppo)) {
-      data2 <- attr(data, 'data2')
-      attr(data, 'data2') <- NULL
-      }
+    subset = subset,
+    na.action = na.action, callenv = callenv
+  )
+  if (length(ppo)) {
+    data2 <- attr(data, "data2")
+    attr(data, "data2") <- NULL
+  }
 
   prevhash <- NULL
-  if(length(file) && file.exists(file)) {
-    prevfit  <- readRDS(file)
-    if(length(prevfit$cppo))
-      prevfit$cppo <- eval(parse(text=prevfit$cppo))
-    prevhash <- prevfit$datahash
+  if (length(file) && file.exists(file)) {
+    prevfit <- readRDS(file)
+    if (length(prevfit$cppo)) {
+      prevfit$cppo <- eval(parse(text = prevfit$cppo))
     }
+    prevhash <- prevfit$datahash
+  }
 
-  if(debug) debug <- function(...)
-    cat(..., format(Sys.time()), '\n', file='/tmp/debug.txt', append=TRUE)
-  else debug <- function(...) {}
+  if (debug) {
+    debug <- function(...) {
+      cat(..., format(Sys.time()), "\n", file = "/tmp/debug.txt", append = TRUE)
+    }
+  } else {
+    debug <- function(...) {}
+  }
 
   ## Function to drop only the ith dimension of a 3-array when subscripting
   ## that dimension to the jth element where j is a single integer
@@ -143,81 +152,87 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
   dropadim <- function(a, i, j) {
     n <- dimnames(a)
     d <- dim(a)
-    b <- if(i == 1)      a[j,  ,  , drop=FALSE]
-         else if(i == 2) a[ , j,  , drop=FALSE]
-         else            a[,   , j, drop=FALSE]
-    d <- d[-i]
-    dn <- if(length(n)) n[-i]
-    matrix(as.vector(b), nrow=d[1], ncol=d[2], dimnames=dn)
+    b <- if (i == 1) {
+      a[j, , , drop = FALSE]
+    } else if (i == 2) {
+      a[, j, , drop = FALSE]
+    } else {
+      a[, , j, drop = FALSE]
     }
+    d <- d[-i]
+    dn <- if (length(n)) n[-i]
+    matrix(as.vector(b), nrow = d[1], ncol = d[2], dimnames = dn)
+  }
 
   nact <- NULL
 
-  yname   <- as.character(formula[2])
+  yname <- as.character(formula[2])
 
   en <- environment(formula)
 
-  requireNamespace('rstan', quietly=TRUE)
+  requireNamespace("rstan", quietly = TRUE)
 
   ## Design handles cluster()
-  X <- rms::Design(data, formula=formula, specials='cluster')
+  X <- rms::Design(data, formula = formula, specials = "cluster")
 
-  cluster     <- attr(X, 'cluster')
-  clustername <- attr(X, 'clustername')
+  cluster <- attr(X, "cluster")
+  clustername <- attr(X, "clustername")
 
-  atrx       <- attributes(X)
-  sformula   <- atrx$sformula
-  nact       <- atrx$na.action
-  Terms      <- atrx$terms
+  atrx <- attributes(X)
+  sformula <- atrx$sformula
+  nact <- atrx$na.action
+  Terms <- atrx$terms
   attr(Terms, "formula") <- formula
-  atr        <- atrx$Design
+  atr <- atrx$Design
   mmcolnames <- atr$mmcolnames
 
-  Y       <- model.extract(X, 'response')
+  Y <- model.extract(X, "response")
   ## model.extract (which calls model.response) not keeping class
-  isOcens <- inherits(Y, 'Ocens') || NCOL(Y) == 2
-  Ncens   <- c(left=0, right=0, interval=0)
+  isOcens <- inherits(Y, "Ocens") || NCOL(Y) == 2
+  Ncens <- c(left = 0, right = 0, interval = 0)
 
-  if(! isOcens) {
-    Y  <- Ocens2ord(Ocens(Y))
+  if (!isOcens) {
+    Y <- Ocens2ord(Ocens(Y))
     ay <- attributes(Y)
-    k  <- length(ay$levels)
+    k <- length(ay$levels)
   } else {
-    Y  <- Ocens2ord(Y)
+    Y <- Ocens2ord(Y)
     ay <- attributes(Y)
-    k  <- length(ay$levels)
-    a  <- Y[, 1]
-    b  <- Y[, 2]
-    Ncens <- c(left     = sum(a == 1 & b > 1),
-               right    = sum(b == k & a < k),
-               interval = sum(a != b & a > 1 & b < k))
+    k <- length(ay$levels)
+    a <- Y[, 1]
+    b <- Y[, 2]
+    Ncens <- c(
+      left = sum(a == 1 & b > 1),
+      right = sum(b == k & a < k),
+      interval = sum(a != b & a > 1 & b < k)
+    )
   }
 
   offs <- atrx$offset
-  if(!length(offs)) offs <- 0
+  if (!length(offs)) offs <- 0
   X <- model.matrix(Terms, X)
-  alt <- attr(mmcolnames, 'alt')
-  if(! all(mmcolnames %in% colnames(X)) && length(alt)) mmcolnames <- alt
-  X <- X[, mmcolnames, drop=FALSE]
+  alt <- attr(mmcolnames, "alt")
+  if (!all(mmcolnames %in% colnames(X)) && length(alt)) mmcolnames <- alt
+  X <- X[, mmcolnames, drop = FALSE]
   colnames(X) <- atr$colnames
 
   Z <- zatr <- zsformula <- NULL
 
-  if(length(ppo)) {
+  if (length(ppo)) {
     ## Response variable is not present in data2
-    Z <- rms::Design(data2, formula=ppo)
+    Z <- rms::Design(data2, formula = ppo)
 
-    zatrx       <- attributes(Z)
-    zsformula   <- zatrx$sformula
-    zTerms      <- zatrx$terms
+    zatrx <- attributes(Z)
+    zsformula <- zatrx$sformula
+    zTerms <- zatrx$terms
     attr(zTerms, "formula") <- ppo
-    zatr        <- zatrx$Design
-    mmcolnames  <- zatr$mmcolnames
+    zatr <- zatrx$Design
+    mmcolnames <- zatr$mmcolnames
 
     Z <- model.matrix(zTerms, Z)
-    alt <- attr(mmcolnames, 'alt')
-    if(! all(mmcolnames %in% colnames(Z)) && length(alt)) mmcolnames <- alt
-    Z <- Z[, mmcolnames, drop=FALSE]
+    alt <- attr(mmcolnames, "alt")
+    if (!all(mmcolnames %in% colnames(Z)) && length(alt)) mmcolnames <- alt
+    Z <- Z[, mmcolnames, drop = FALSE]
     colnames(Z) <- zatr$colnames
   }
 
@@ -225,398 +240,472 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
 
   ## Get rid of row names and other attributes that rstan barks about
   trimit <- function(x) {
-    attr(x, 'scaled:center') <- NULL   # added by QR process
+    attr(x, "scaled:center") <- NULL # added by QR process
     dimnames(x) <- NULL # list(NULL, dimnames(x)[[2]])
     x
   }
 
-  wqrX   <- selectedQr(X, center=TRUE)
-  Xs     <- trimit(wqrX$X)
-  xbar   <- wqrX$xbar
-  xqrsd  <- apply(Xs, 2, sd)
+  wqrX <- selectedQr(X, center = TRUE)
+  Xs <- trimit(wqrX$X)
+  xbar <- wqrX$xbar
+  xqrsd <- apply(Xs, 2, sd)
   wqrX$X <- NULL
 
-  if(length(ppo)) {
-    wqrZ   <- selectedQr(Z, center=TRUE)
-    Zs     <- trimit(wqrZ$X)
-    zbar   <- wqrZ$xbar
+  if (length(ppo)) {
+    wqrZ <- selectedQr(Z, center = TRUE)
+    Zs <- trimit(wqrZ$X)
+    zbar <- wqrZ$xbar
     wqrZ$X <- NULL
   }
 
-	n    <- nrow(X)
-	p    <- ncol(X)
+  n <- nrow(X)
+  p <- ncol(X)
 
-  ylev        <- ay$levels
-  mediany     <- ay$median
-  midy        <- ay$mid
-  numy        <- ay$freq
+  ylev <- ay$levels
+  mediany <- ay$median
+  midy <- ay$mid
+  numy <- ay$freq
   names(numy) <- ylev
 
-  kmid <- if(length(mediany))
-            max(1, which(ylev == mediany) - 1L)
-          else  # get intercept number closest to median Y
-            max(1, which((1L : length(ylev)) == mediany) - 1L)
+  kmid <- if (length(mediany)) {
+    max(1, which(ylev == mediany) - 1L)
+  } else { # get intercept number closest to median Y
+    max(1, which((1L:length(ylev)) == mediany) - 1L)
+  }
 
-  pppo <- if(length(ppo)) ncol(Z) else 0
-  if(length(cppo) && (pppo == 0)) stop('may not specify cppo without ppo')
+  pppo <- if (length(ppo)) ncol(Z) else 0
+  if (length(cppo) && (pppo == 0)) stop("may not specify cppo without ppo")
 
-  nrp               <- length(ylev) - 1L
-  if(nrp == 1) kmid <- 1
+  nrp <- length(ylev) - 1L
+  if (nrp == 1) kmid <- 1
 
-	ass     <- rms::DesignAssign(atr, nrp, Terms)
-  zass    <- if(pppo > 0) rms::DesignAssign(zatr, 0, zTerms)    ##  0? 1?
+  ass <- rms::DesignAssign(atr, nrp, Terms)
+  zass <- if (pppo > 0) rms::DesignAssign(zatr, 0, zTerms) ##  0? 1?
 
   ## Unconstrained PPO model does not handle censoring
-  if(k > 2 && length(ppo) && ! length(cppo)) Y <- as.integer(Y[, 1])
+  if (k > 2 && length(ppo) && !length(cppo)) Y <- as.integer(Y[, 1])
   ## Go to trouble of keeping list elements in order from previous
   ## version so that existing models fitted with iprior=0 will not
   ## have to be re-run
 
-	d <- if(iprior == 0)
-         list(X=Xs,
-              y=Y,
-              N=n, p=p, k=k, conc=conc)
-       else
-         list(X=Xs,
-              y=Y,
-              N=n, p=p, k=k, iprior=iprior, ascale=ascale)
+  d <- if (iprior == 0) {
+    list(
+      X = Xs,
+      y = Y,
+      N = n, p = p, k = k, conc = conc
+    )
+  } else {
+    list(
+      X = Xs,
+      y = Y,
+      N = n, p = p, k = k, iprior = iprior, ascale = ascale
+    )
+  }
 
   ## Need to negate alphas from Stan if use flat or t-distribution prior
   ## for intercepts (iprior > 0)
 
-  alphasign <- if(iprior == 0) 1. else -1.
+  alphasign <- if (iprior == 0) 1. else -1.
 
-  if(length(cppo)) {
-    if(normcppo) {
+  if (length(cppo)) {
+    if (normcppo) {
       Cppo <- function(y, fun, center, scale) (fun(y) - center) / scale
-      formals(Cppo)$fun  <- cppo
+      formals(Cppo)$fun <- cppo
       ## Evaluate function on original scale
-      cppoy <- cppo(ylev[Y[,1]])
+      cppoy <- cppo(ylev[Y[, 1]])
       formals(Cppo)$center <- mean(cppoy)
-      formals(Cppo)$scale  <- sd(cppoy)
+      formals(Cppo)$scale <- sd(cppoy)
       cppo <- Cppo
-      }
-    d$pposcore <- cppo(ylev)   # now it's centered and scaled
-  } else d$pposcore <- numeric()
+    }
+    d$pposcore <- cppo(ylev) # now it's centered and scaled
+  } else {
+    d$pposcore <- numeric()
+  }
   d$lpposcore <- length(d$pposcore)
 
   Nc <- 0
   d$psigma <- as.integer(psigma)
-  if(length(cluster)) {
+  if (length(cluster)) {
     d$rsdmean <- as.array(rsdmean)
-    d$rsdsd   <- if(psigma == 1) as.array(rsdsd) else numeric(0)
-    cl        <- as.integer(as.factor(cluster))
-    Nc        <- max(cl, na.rm=TRUE)
-    d$Nc      <- Nc
+    d$rsdsd <- if (psigma == 1) as.array(rsdsd) else numeric(0)
+    cl <- as.integer(as.factor(cluster))
+    Nc <- max(cl, na.rm = TRUE)
+    d$Nc <- Nc
     d$cluster <- cl
-    method    <- 'sampling'
-  }
-  else {
+    method <- "sampling"
+  } else {
     Nc <- d$Nc <- 0L
     d$rsdmean <- d$rsdsd <- numeric()
     d$cluster <- integer()
-    }
+  }
 
-  d$Z <- if(pppo) Zs else matrix(0., nrow=n, ncol=0)
+  d$Z <- if (pppo) Zs else matrix(0., nrow = n, ncol = 0)
   d$q <- pppo
 
 
   d$cn <- d$cn2 <- 0L
   d$cmus <- d$cmus2 <- d$csds <- d$csds2 <- array(numeric(0))
-  d$C  <- array(0., c(0, p))
+  d$C <- array(0., c(0, p))
   d$C2 <- array(0., c(0, pppo))
 
-  if(any(is.na(Xs)) | any(is.na(Y))) stop('program logic error')
+  if (any(is.na(Xs)) | any(is.na(Y))) stop("program logic error")
 
   unconstrainedppo <- pppo > 0 && length(cppo) == 0
-  if(unconstrainedppo) {
-    priorsdppo <- rep(priorsdppo, length=pppo)
-    d$sdsppo   <- as.array(priorsdppo)
+  if (unconstrainedppo) {
+    priorsdppo <- rep(priorsdppo, length = pppo)
+    d$sdsppo <- as.array(priorsdppo)
   }
 
-  fitter <- if(unconstrainedppo) 'lrmcppo'
-            else if(iprior == 0) 'lrmconppo' else 'lrmconppot'
-  if(unconstrainedppo) d$pposcore <- d$lpposcore <- NULL
-  if(standata) return(d)
+  fitter <- if (unconstrainedppo) {
+    "lrmcppo"
+  } else if (iprior == 0) "lrmconppo" else "lrmconppot"
+  if (unconstrainedppo) d$pposcore <- d$lpposcore <- NULL
+  if (standata) {
+    return(d)
+  }
 
   switch(backend,
-         rstan = {
-          mod      <- stanmodels[[fitter]]
-          stancode <- rstan::get_stancode(mod) },
-         cmdstan = {
-          sfile     <- file.path(system.file(package='rmsb'), 'stan',
-                                  paste0(fitter, '.stan'))
-          stancode <- readLines(sfile) }
+    rstan = {
+      mod <- stanmodels[[fitter]]
+      stancode <- rstan::get_stancode(mod)
+    },
+    cmdstan = {
+      sfile <- file.path(
+        system.file(package = "rmsb"), "stan",
+        paste0(fitter, ".stan")
+      )
+      stancode <- readLines(sfile)
+    }
   )
 
   ## See if previous fit had identical inputs and Stan code
   ## If using cmdstand, no need to even compile the code if so
   ## Object d does not yet have C in it so use the precursor of C (pcontrast, npcontrast)
   ## in hash digest
-  hashobj  <- list(d, pcontrast, npcontrast, inito, inits, iter, warmup, chains, loo, ppairs, method,
-                   stancode, ...)
+  hashobj <- list(
+    d, pcontrast, npcontrast, inito, inits, iter, warmup, chains, loo, ppairs, method,
+    stancode, sampling.args, ...
+  )
   datahash <- digest::digest(hashobj)
-  if(length(prevhash) && prevhash == datahash) return(prevfit)
+  if (length(prevhash) && prevhash == datahash) {
+    return(prevfit)
+  }
 
-  hashobj  <- NULL
+  hashobj <- NULL
 
   itfailed <- function(w) is.list(w) && length(w$fail) && w$fail
 
   opt <- parm <- taus <- NULL
 
-  sigmagname <- if(length(cluster)) 'sigmag[1]'
+  sigmagname <- if (length(cluster)) "sigmag[1]"
 
-  if(backend == 'cmdstan') {
-    if(! requireNamespace('cmdstanr', quietly=TRUE))
-      stop('to use cmdstan backend you must install the cmdstanr package')
-    mod <- suppressMessages(cmdstanr::cmdstan_model(sfile, dir=rmsbdir))
+  if (backend == "cmdstan") {
+    if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+      stop("to use cmdstan backend you must install the cmdstanr package")
+    }
+    mod <- suppressMessages(cmdstanr::cmdstan_model(sfile, dir = rmsbdir))
   }
 
   ## cmdstan needs a JSON method for components of data
   ## Get around this for Ocens variable by removing its class
   d$y <- unclass(d$y)
 
-  fit.object <- list(call=call, fitter=fitter, link='logistic',
-                     yname=yname, ylevels=ylev, freq=numy,
-                     pppo=pppo, cppo=cppo,
-                     Design=atr, zDesign=zatr,
-                     scale.pred=c('log odds', 'Odds Ratio'),
-                     terms=Terms, assign=ass, zassign=zass,
-                     na.action=atrx$na.action, fail=FALSE,
-                     non.slopes=nrp, interceptRef=kmid,
-                     sformula=sformula, zsformula=zsformula,
-                     pcontrast=pcontrast, npcontrast=npcontrast)
+  fit.object <- list(
+    call = call, fitter = fitter, link = "logistic",
+    yname = yname, ylevels = ylev, freq = numy,
+    pppo = pppo, cppo = cppo,
+    Design = atr, zDesign = zatr,
+    scale.pred = c("log odds", "Odds Ratio"),
+    terms = Terms, assign = ass, zassign = zass,
+    na.action = atrx$na.action, fail = FALSE,
+    non.slopes = nrp, interceptRef = kmid,
+    sformula = sformula, zsformula = zsformula,
+    pcontrast = pcontrast, npcontrast = npcontrast
+  )
 
   fo <- fit.object
 
   docon <- function(fo, X, wqr, pc, main) {
     nint <- length(ylev) - 1
     fo$coefficients <- rep(0., nint + ncol(X))
-    fo$tau          <- rep(0., pppo)
-    fo$draws <- 1L   # trick predictrms into bayes=TRUE
-    fo$param <- rbind(mean  =rep(0., nint + ncol(X) + pppo * main),
-                      median=rep(0., nint + ncol(X) + pppo * main))
-    class(fo) <- c('blrm', 'rmsb', 'rms')
+    fo$tau <- rep(0., pppo)
+    fo$draws <- 1L # trick predictrms into bayes=TRUE
+    fo$param <- rbind(
+      mean = rep(0., nint + ncol(X) + pppo * main),
+      median = rep(0., nint + ncol(X) + pppo * main)
+    )
+    class(fo) <- c("blrm", "rmsb", "rms")
     weights <- pc$weights
-    if(! length(weights)) weights <- 'equal'
-    expand  <- pc$expand
-    if(! length(expand)) expand <- TRUE
-    cmus    <- pc$mu
-    csds    <- pc$sd
-    con     <- pc$contrast
-    if(! length(con))        stop('must include contrast in pcontrast')
-    if(! is.expression(con)) stop('contrast must be expression()')
-    pc[c('weights', 'expand', 'mu', 'sd', 'contrast', 'ycut')] <- NULL
+    if (!length(weights)) weights <- "equal"
+    expand <- pc$expand
+    if (!length(expand)) expand <- TRUE
+    cmus <- pc$mu
+    csds <- pc$sd
+    con <- pc$contrast
+    if (!length(con)) stop("must include contrast in pcontrast")
+    if (!is.expression(con)) stop("contrast must be expression()")
+    pc[c("weights", "expand", "mu", "sd", "contrast", "ycut")] <- NULL
     cnam <- names(pc)
-    if(! length(cnam) || any(cnam == ''))
-      stop('predictor setting lists in pcontrast must be named')
+    if (!length(cnam) || any(cnam == "")) {
+      stop("predictor setting lists in pcontrast must be named")
+    }
     ## Compute design matrices to be used in contrasts
-    XC <- lapply(pc,
-                 function(x) do.call(Xcontrast,    # Xcontrast is in rms
-                                     list(fo, a=x, weights=weights,
-                                          expand=expand, Zmatrix=FALSE)) )
+    XC <- lapply(
+      pc,
+      function(x) {
+        do.call(
+          Xcontrast, # Xcontrast is in rms
+          list(fo,
+            a = x, weights = weights,
+            expand = expand, Zmatrix = FALSE
+          )
+        )
+      }
+    )
 
     ## Over expressions in contrasts evaluate them in XC
     Contrast <- do.call(rbind, lapply(con, eval, XC))
     cn <- nrow(Contrast)
-    if(! length(cmus)) cmus <- 0.
-    if(! length(csds)) csds <- 100.
-    if(length(cmus) == 1) cmus <- rep(cmus, length=cn)
-    if(length(csds) == 1) csds <- rep(csds, length=cn)
-    if(length(cmus) != cn || length(csds) != cn)
-      stop('mismatch between number of contrasts (', cn,
-           '), length of mu (', length(cmus),
-           ') and length of sd (', length(csds), ')')
-    Contrastt <- Contrast %*% wqr$Rinv   # QR-transformed contrasts
-    d$C    <- as.array(Contrastt)
+    if (!length(cmus)) cmus <- 0.
+    if (!length(csds)) csds <- 100.
+    if (length(cmus) == 1) cmus <- rep(cmus, length = cn)
+    if (length(csds) == 1) csds <- rep(csds, length = cn)
+    if (length(cmus) != cn || length(csds) != cn) {
+      stop(
+        "mismatch between number of contrasts (", cn,
+        "), length of mu (", length(cmus),
+        ") and length of sd (", length(csds), ")"
+      )
+    }
+    Contrastt <- Contrast %*% wqr$Rinv # QR-transformed contrasts
+    d$C <- as.array(Contrastt)
     d$cmus <- as.array(cmus)
     d$csds <- as.array(csds)
-    list(cn=cn, Contrast=Contrast, C=as.array(Contrastt),
-         cmus=as.array(cmus), csds=as.array(csds) )
+    list(
+      cn = cn, Contrast = Contrast, C = as.array(Contrastt),
+      cmus = as.array(cmus), csds = as.array(csds)
+    )
   }
 
-  if(length(pcontrast)) {
-    w <- docon(fo, X, wqrX, pcontrast, main=TRUE)
-    fit.object$Contrast  <- w$Contrast
+  if (length(pcontrast)) {
+    w <- docon(fo, X, wqrX, pcontrast, main = TRUE)
+    fit.object$Contrast <- w$Contrast
     fit.object$Contrastt <- w$Contrastt
-    d$cn   <- w$cn
-    d$C    <- w$C
+    d$cn <- w$cn
+    d$C <- w$C
     d$cmus <- w$cmus
     d$csds <- w$csds
   }
 
-  if(length(npcontrast)) {
-    fo$Design   <- zatr
-    fo$terms    <- zTerms
-    fo$assign   <- zass
+  if (length(npcontrast)) {
+    fo$Design <- zatr
+    fo$terms <- zTerms
+    fo$assign <- zass
     fo$sformula <- zsformula
-    w <- docon(fo, Z, wqrZ, npcontrast, main=FALSE)
-    fit.object$nContrast  <- w$Contrast
+    w <- docon(fo, Z, wqrZ, npcontrast, main = FALSE)
+    fit.object$nContrast <- w$Contrast
     fit.object$nContrastt <- w$Contrastt
-    d$cn2   <- w$cn
-    d$C2    <- w$C
+    d$cn2 <- w$cn
+    d$C2 <- w$C
     d$cmus2 <- w$cmus
     d$csds2 <- w$csds
   }
 
-  if(method != 'sampling') {
+  if (method != "sampling") {
     # Temporarily make concentration parameter = 1.0
     d$conc <- 1.0
 
-    if(showopt)
-    g <- switch(backend,
-                rstan   = rstan::optimizing(mod, data=d, init=inito, ...),
-                cmdstan = mod$optimize(data=d, init=if(! all(inito == 'random'))inito, ...)    ) else {
-    if(backend == 'rstan')
-          capture.output(g <- rstan::optimizing(mod, data=d, init=inito, ...))
-    else  capture.output(g <- mod$optimize(data=d,
-                          init=if(! all(inito == 'random'))inito, ...))
-                }
-
-    d$conc <- conc   # restore
-    rc <- switch(backend, rstan=g$return_code, cmdstan=g$return_codes())
-    if(rc != 0) {
-      warning(paste('Optimizing did not work; return code', rc,
-                    '\nPosterior modes not computed'))
-      opt <- list(coefficients=NULL,
-                  sigmag=NA, deviance=NA,
-                  return_code=rc, hessian=NULL)
+    if (showopt) {
+      g <- switch(backend,
+        rstan   = rstan::optimizing(mod, data = d, init = inito, ...),
+        cmdstan = mod$optimize(data = d, init = if (!all(inito == "random")) inito, ...)
+      )
     } else {
-      parm   <- switch(backend, rstan = g$par, cmdstan = g$mle())
-      nam    <- names(parm)
-      al     <- nam[grep('alpha\\[', nam)]
-      be     <- nam[grep('beta\\[',  nam)]
-      ta     <- nam[grep('tau\\[',   nam)]
+      if (backend == "rstan") {
+        capture.output(g <- rstan::optimizing(mod, data = d, init = inito, ...))
+      } else {
+        capture.output(g <- mod$optimize(
+          data = d,
+          init = if (!all(inito == "random")) inito, ...
+        ))
+      }
+    }
+
+    d$conc <- conc # restore
+    rc <- switch(backend,
+      rstan = g$return_code,
+      cmdstan = g$return_codes()
+    )
+    if (rc != 0) {
+      warning(paste(
+        "Optimizing did not work; return code", rc,
+        "\nPosterior modes not computed"
+      ))
+      opt <- list(
+        coefficients = NULL,
+        sigmag = NA, deviance = NA,
+        return_code = rc, hessian = NULL
+      )
+    } else {
+      parm <- switch(backend,
+        rstan = g$par,
+        cmdstan = g$mle()
+      )
+      nam <- names(parm)
+      al <- nam[grep("alpha\\[", nam)]
+      be <- nam[grep("beta\\[", nam)]
+      ta <- nam[grep("tau\\[", nam)]
       alphas <- alphasign * parm[al]
-      betas  <- parm[be]
-      if(getOption('blrmdebugqr', FALSE)) prn(llist(betas, wqrX$Rinv), file='/tmp/z')
-      betas  <- matrix(betas, nrow=1) %*% t(wqrX$Rinv)
-      names(betas)  <- atr$colnames
-      if(getOption('blrmdebugqr', FALSE)) prn(betas, file='/tmp/z')
+      betas <- parm[be]
+      if (getOption("blrmdebugqr", FALSE)) prn(llist(betas, wqrX$Rinv), file = "/tmp/z")
+      betas <- matrix(betas, nrow = 1) %*% t(wqrX$Rinv)
+      names(betas) <- atr$colnames
+      if (getOption("blrmdebugqr", FALSE)) prn(betas, file = "/tmp/z")
       alphas <- alphas - sum(betas * xbar)
-      if(pppo) {
-        if(length(cppo)) { # constrained PPO model
-          taus <- matrix(parm[ta], nrow=pppo, ncol=1)
+      if (pppo) {
+        if (length(cppo)) { # constrained PPO model
+          taus <- matrix(parm[ta], nrow = pppo, ncol = 1)
 
           taus <- wqrZ$Rinv %*% taus
           alphas <- alphas - d$pposcore[-1] * sum(taus * zbar)
           # zbartau <- sum(taus * zbar)    # longhand
           # for(j in 1 : (k-1)) alphas[j] <- alphas[j] - d$pposcore[j + 1] * zbartau
-          subscript <- as.integer(gsub('tau\\[(.*)\\]', '\\1', ta))  # Z column
-          namtau <- paste(colnames(Z)[subscript], 'x f(y)')
+          subscript <- as.integer(gsub("tau\\[(.*)\\]", "\\1", ta)) # Z column
+          namtau <- paste(colnames(Z)[subscript], "x f(y)")
+        } else {
+          taus <- matrix(parm[ta], nrow = pppo, ncol = k - 2)
+          taus <- wqrZ$Rinv %*% taus
+          alphas[-1] <- alphas[-1] - matrix(zbar, ncol = pppo) %*% taus
+          ro <- as.integer(gsub("tau\\[(.*),.*", "\\1", ta)) # y cutoff
+          co <- as.integer(gsub("tau\\[.*,(.*)\\]", "\\1", ta)) # Z column
+          namtau <- paste0(colnames(Z)[ro], ":y>=", ylev[-(1:2)][co])
         }
-        else {
-          taus  <- matrix(parm[ta], nrow=pppo, ncol=k-2)
-          taus  <- wqrZ$Rinv %*% taus
-          alphas[-1] <- alphas[-1] - matrix(zbar, ncol=pppo) %*% taus
-          ro     <- as.integer(gsub('tau\\[(.*),.*',    '\\1', ta))  # y cutoff
-          co     <- as.integer(gsub('tau\\[.*,(.*)\\]', '\\1', ta))  # Z column
-          namtau <- paste0(colnames(Z)[ro], ':y>=', ylev[-(1:2)][co])
-          }
         names(taus) <- namtau
       }
-      names(alphas) <- if(nrp == 1) 'Intercept' else paste0('y>=', ylev[-1])
-      opt <- list(coefficients=c(alphas, betas, taus),
-                  cppo=deparse(cppo), zbar=zbar,   # prevent huge environment for cppo
-                  sigmag=parm[sigmagname],
-                  deviance=-2 * switch(backend, rstan = g$value, cmdstan = g$lp()),
-                  return_code=g$return_code, hessian=g$hessian)
+      names(alphas) <- if (nrp == 1) "Intercept" else paste0("y>=", ylev[-1])
+      opt <- list(
+        coefficients = c(alphas, betas, taus),
+        cppo = deparse(cppo), zbar = zbar, # prevent huge environment for cppo
+        sigmag = parm[sigmagname],
+        deviance = -2 * switch(backend,
+          rstan = g$value,
+          cmdstan = g$lp()
+        ),
+        return_code = g$return_code, hessian = g$hessian
+      )
       # cmdstan does not yet have hessian
-      }
-    if(method == 'optimizing') return(opt)
+    }
+    if (method == "optimizing") {
+      return(opt)
+    }
   }
 
-  if(progress != '') sink(progress, append=TRUE)
+  if (progress != "") sink(progress, append = TRUE)
 
   debug(1)
-  incpars <- c('alpha', 'beta', if(length(cluster)) c('gamma', 'sigmag'), if(pppo) 'tau', if(backend == 'rstan' & loo) 'log_lik')
+  incpars <- c("alpha", "beta", if (length(cluster)) c("gamma", "sigmag"), if (pppo) "tau", if (backend == "rstan" & loo) "log_lik")
 
   stime <- system.time({
     args <- switch(backend,
-                   rstan = c(list(mod, pars=incpars, data=d, iter=iter,
-                                  warmup=warmup, chains=chains,
-                                  refresh=refresh),
-                             sampling.args),
-                   cmdstan = c(list(data=d, iter_sampling=iter - warmup,
-                                    iter_warmup=warmup, chains=chains,
-                                    refresh=refresh,
-                                    init=if(! all(inits == 'random')) inits),
-                               sampling.args))
+      rstan = c(
+        list(mod,
+          pars = incpars, data = d, iter = iter,
+          warmup = warmup, chains = chains,
+          refresh = refresh
+        ),
+        sampling.args
+      ),
+      cmdstan = c(
+        list(
+          data = d, iter_sampling = iter - warmup,
+          iter_warmup = warmup, chains = chains,
+          refresh = refresh,
+          init = if (!all(inits == "random")) inits
+        ),
+        sampling.args
+      )
+    )
     g <- switch(backend,
-                rstan   = do.call(rstan::sampling, args),
-                cmdstan = do.call(mod$sample, args)) })
-  sampling_time <- unname(stime['elapsed'])
-  if(backend == 'rstan' && (is.null(g) || g@mode == 2))
-    stop('Stan rstan sampler failed')
+      rstan   = do.call(rstan::sampling, args),
+      cmdstan = do.call(mod$sample, args)
+    )
+  })
+  sampling_time <- unname(stime["elapsed"])
+  if (backend == "rstan" && (is.null(g) || g@mode == 2)) {
+    stop("Stan rstan sampler failed")
+  }
   debug(2)
 
-  if(progress != '') sink()
+  if (progress != "") sink()
 
   draws <- switch(backend,
-                  cmdstan = {
-                    draws <- g$draws()
-                    nam   <- dimnames(draws)[[3]]
-                    regx  <- paste(paste0('^', incpars, '\\['), collapse='|')   # make "or" regular expression
-                    nam   <- nam[grep(regx, nam)]
-                    # Combine all chains
-                    matrix(draws[, , nam], ncol=length(nam), dimnames=list(NULL, nam)) },
-                  rstan   = {
-                    nam   <- names(g)
-                    as.matrix(g) }    )
+    cmdstan = {
+      draws <- g$draws()
+      nam <- dimnames(draws)[[3]]
+      regx <- paste(paste0("^", incpars, "\\["), collapse = "|") # make "or" regular expression
+      nam <- nam[grep(regx, nam)]
+      # Combine all chains
+      matrix(draws[, , nam], ncol = length(nam), dimnames = list(NULL, nam))
+    },
+    rstan = {
+      nam <- names(g)
+      as.matrix(g)
+    }
+  )
 
-	al  <- nam[grep('alpha\\[', nam)]
-	be  <- nam[grep('beta\\[',  nam)]
-  ga  <- nam[grep('gamma\\[', nam)]
+  al <- nam[grep("alpha\\[", nam)]
+  be <- nam[grep("beta\\[", nam)]
+  ga <- nam[grep("gamma\\[", nam)]
 
   ndraws <- nrow(draws)
-	alphas <- alphasign * draws[, al, drop=FALSE]
-	betas  <- draws[, be, drop=FALSE]
-  betas  <- betas %*% t(wqrX$Rinv)
+  alphas <- alphasign * draws[, al, drop = FALSE]
+  betas <- draws[, be, drop = FALSE]
+  betas <- betas %*% t(wqrX$Rinv)
 
-  omega   <- NULL      # non-intercepts, non-slopes
-  clparm  <- character(0)
-  gammas  <- NULL
+  omega <- NULL # non-intercepts, non-slopes
+  clparm <- character(0)
+  gammas <- NULL
 
-  if(length(cluster)) {
-    omega   <- cbind(sigmag = draws[, sigmagname])
-    clparm  <- 'sigmag'
-    cle     <- draws[, ga, drop=FALSE]
-    gammas  <- apply(cle, 2, median)      # posterior median per subject
+  if (length(cluster)) {
+    omega <- cbind(sigmag = draws[, sigmagname])
+    clparm <- "sigmag"
+    cle <- draws[, ga, drop = FALSE]
+    gammas <- apply(cle, 2, median) # posterior median per subject
   }
 
   debug(3)
   tau <- ta <- tauInfo <- NULL
-  if(pppo) {
-    ta     <- nam[grep('tau\\[', nam)]
+  if (pppo) {
+    ta <- nam[grep("tau\\[", nam)]
     clparm <- c(clparm, ta)
-    if(length(cppo)) {  # constrained partial PO model
-      subscript <- as.integer(gsub('tau\\[(.*)\\]', '\\1', ta))  # Z column
-      xt     <- colnames(Z)[subscript]
-      namtau <- paste(xt, 'x f(y)')
-      taus   <- draws[, ta, drop=FALSE]
-      taus   <- taus %*% t(wqrZ$Rinv)
+    if (length(cppo)) { # constrained partial PO model
+      subscript <- as.integer(gsub("tau\\[(.*)\\]", "\\1", ta)) # Z column
+      xt <- colnames(Z)[subscript]
+      namtau <- paste(xt, "x f(y)")
+      taus <- draws[, ta, drop = FALSE]
+      taus <- taus %*% t(wqrZ$Rinv)
 
-      tauInfo <- data.frame(name=namtau, x=xt)
+      tauInfo <- data.frame(name = namtau, x = xt)
       ## Make sure mtaus is not referenced later when length(cppo) > 0
-    }
-    else {
-      ro     <- as.integer(gsub('tau\\[(.*),.*',    '\\1', ta))  # y cutoff
-      co     <- as.integer(gsub('tau\\[.*,(.*)\\]', '\\1', ta))  # Z column
-      xt     <- colnames(Z)[ro]
-      yt     <- ylev[-(1:2)][co]
-      namtau <- paste0(xt, ':y>=', yt)
-      taus   <- draws[, ta, drop=FALSE]
-      tauInfo <- data.frame(intercept=1 + co, name=namtau, x=xt, y=yt)
+    } else {
+      ro <- as.integer(gsub("tau\\[(.*),.*", "\\1", ta)) # y cutoff
+      co <- as.integer(gsub("tau\\[.*,(.*)\\]", "\\1", ta)) # Z column
+      xt <- colnames(Z)[ro]
+      yt <- ylev[-(1:2)][co]
+      namtau <- paste0(xt, ":y>=", yt)
+      taus <- draws[, ta, drop = FALSE]
+      tauInfo <- data.frame(intercept = 1 + co, name = namtau, x = xt, y = yt)
       ## Need taus as a 3-dim array for intercept correction for centering
       ## Also helps with undoing the QR orthogonalization
-      mtaus      <- array(taus, dim=c(ndraws, pppo, k - 2))
+      mtaus <- array(taus, dim = c(ndraws, pppo, k - 2))
 
-      for(j in 1 : (k - 2))
+      for (j in 1:(k - 2)) {
         mtaus[, , j] <- dropadim(mtaus, 3, j) %*% t(wqrZ$Rinv)
-      taus <- matrix(as.vector(mtaus), nrow=ndraws, ncol=pppo * (k -2))
       }
-    colnames(taus) <- namtau
+      taus <- matrix(as.vector(mtaus), nrow = ndraws, ncol = pppo * (k - 2))
     }
+    colnames(taus) <- namtau
+  }
 
   debug(4)
 
@@ -626,113 +715,140 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
   switch(backend,
     rstan = {
       diagnostics <-
-		    tryCatch(rstan::summary(g, pars=c(al, be, clparm), probs=NULL),
-                 error=function(...) list(fail=TRUE))
-        if(itfailed(diagnostics)) {
-        warning('rstan::summary failed; see fit component diagnostics')
-        diagnostics <- list(pars=c(al, be, clparm), failed=TRUE)
-        } else diagnostics <- diagnostics$summary[,c('n_eff', 'Rhat')]
-      },
+        tryCatch(rstan::summary(g, pars = c(al, be, clparm), probs = NULL),
+          error = function(...) list(fail = TRUE)
+        )
+      if (itfailed(diagnostics)) {
+        warning("rstan::summary failed; see fit component diagnostics")
+        diagnostics <- list(pars = c(al, be, clparm), failed = TRUE)
+      } else {
+        diagnostics <- diagnostics$summary[, c("n_eff", "Rhat")]
+      }
+    },
     cmdstan = {
-      vsum <- setdiff(incpars, 'gamma')
-      dm   <- capture.output(g$cmdstan_diagnose())[-(1:2)]  # remove csv temp file descriptions
-      diagnostics <- list(message            = dm,
-                          diagnostic_summary = g$diagnostic_summary(),
-                          summary            = as.data.frame(g$summary(variables=vsum)))
-       }  )
+      vsum <- setdiff(incpars, "gamma")
+      dm <- capture.output(g$cmdstan_diagnose())[-(1:2)] # remove csv temp file descriptions
+      diagnostics <- list(
+        message = dm,
+        diagnostic_summary = g$diagnostic_summary(),
+        summary = as.data.frame(g$summary(variables = vsum))
+      )
+    }
+  )
 
   debug(6)
 
-  if(length(ppairs)) {
-    if(backend == 'cmdstan')
-      if(! requireNamespace('bayesplot', quietly=TRUE))
-        stop('bayesplot package must be installed if using ppairs and cmdstan')
-    if(is.character(ppairs)) png(ppairs, width=1000, height=1000, pointsize=11)
+  if (length(ppairs)) {
+    if (backend == "cmdstan") {
+      if (!requireNamespace("bayesplot", quietly = TRUE)) {
+        stop("bayesplot package must be installed if using ppairs and cmdstan")
+      }
+    }
+    if (is.character(ppairs)) png(ppairs, width = 1000, height = 1000, pointsize = 11)
     ppa <- tryCatch(
       switch(backend,
-        rstan   = pairs(g, pars=c(al[1], be, clparm)),
+        rstan = pairs(g, pars = c(al[1], be, clparm)),
         cmdstan = print(bayesplot::mcmc_pairs(g$draws(c(al[1], be, clparm)),
-                                            np=bayesplot::nuts_params(g))) ),
-      error=function(...) list(fail=TRUE))
-    if(itfailed(ppa)) warning('ppairs failed, probably because of too many parameters for available space')
-    if(itfailed(ppa) || is.character(ppairs)) dev.off()
+          np = bayesplot::nuts_params(g)
+        ))
+      ),
+      error = function(...) list(fail = TRUE)
+    )
+    if (itfailed(ppa)) warning("ppairs failed, probably because of too many parameters for available space")
+    if (itfailed(ppa) || is.character(ppairs)) dev.off()
   }
 
   debug(7)
-	# Back-scale to original data scale
-	alphacorr <- rowSums(sweep(betas, 2, xbar, '*')) # was xbar/xsd
-	alphas    <- sweep(alphas, 1, alphacorr, '-')
-  if(length(cppo)) {
+  # Back-scale to original data scale
+  alphacorr <- rowSums(sweep(betas, 2, xbar, "*")) # was xbar/xsd
+  alphas <- sweep(alphas, 1, alphacorr, "-")
+  if (length(cppo)) {
     sc <- d$pposcore[-1]
-    for(i in 1 : ndraws) alphas[i, ] <- alphas[i,,drop=FALSE] - sc * sum(taus[i, ] * zbar)
+    for (i in 1:ndraws) alphas[i, ] <- alphas[i, , drop = FALSE] - sc * sum(taus[i, ] * zbar)
+  } else if (pppo > 0) {
+    for (i in 1:ndraws) {
+      for (j in 3:k) {
+        alphas[i, j - 1] <- alphas[i, j - 1, drop = FALSE] -
+          sum(mtaus[i, , j - 2] * zbar)
+      }
     }
-  else if(pppo > 0)
-    for(i in 1 : ndraws)
-      for(j in 3 : k)
-        alphas[i, j - 1] <- alphas[i, j - 1, drop=FALSE] -
-                            sum(mtaus[i, , j-2] * zbar)
+  }
 
   #  alphas[, -1] <- alphas[, -1, drop=FALSE] - zalphacorr
-	colnames(alphas) <- if(nrp == 1) 'Intercept' else paste0('y>=', ylev[-1])
-	colnames(betas)  <- atr$colnames
+  colnames(alphas) <- if (nrp == 1) "Intercept" else paste0("y>=", ylev[-1])
+  colnames(betas) <- atr$colnames
 
-	draws            <- cbind(alphas, betas, taus)
+  draws <- cbind(alphas, betas, taus)
 
   debug(8)
-  param <- rbind(mean=colMeans(draws), median=apply(draws, 2, median))
-  if(method != 'sampling') {
-    param <- rbind(mode=opt$coefficients, param)
+  param <- rbind(mean = colMeans(draws), median = apply(draws, 2, median))
+  if (method != "sampling") {
+    param <- rbind(mode = opt$coefficients, param)
     opt$coefficients <- NULL
   }
 
   Loo <- lootime <- NULL
-  if(loo) {
+  if (loo) {
     lootime <- system.time(
-                Loo <- tryCatch(switch(backend, rstan=rstan::loo(g), cmdstan=g$loo()),
-                                error=function(...) list(fail=TRUE)))
-    if(itfailed(Loo)) {
-      warning('loo failed; try running on loo(stanGet(fit object)) for more information')
+      Loo <- tryCatch(
+        switch(backend,
+          rstan = rstan::loo(g),
+          cmdstan = g$loo()
+        ),
+        error = function(...) list(fail = TRUE)
+      )
+    )
+    if (itfailed(Loo)) {
+      warning("loo failed; try running on loo(stanGet(fit object)) for more information")
       Loo <- NULL
     }
   }
 
   debug(9)
 
-  res <- c(fit.object,
-           list(
-             draws=draws, omega=omega,
-             gammas=gammas, eps=epsmed,
-             param=param,
-             psigma=psigma, rsdmean=rsdmean, rsdsd=rsdsd, iprior=iprior,
-             xqrsd=xqrsd,
-             N=n, Ncens=Ncens, p=p,
-             alphas=al, betas=be, taus=ta, tauInfo=tauInfo,
-             xbar=xbar, zbar=zbar, Design=atr, zDesign=zatr,
-             scale.pred=c('log odds', 'Odds Ratio'),
-             x=if(x) X, y=if(y) Y, z=if(x) Z,
-             loo=Loo, lootime=lootime,
-             clusterInfo=if(length(cluster))
-                           list(cluster=if(x) cluster else NULL,
-                                n=Nc, name=clustername),
-             opt=opt, diagnostics=diagnostics,
-             iter=iter, chains=chains, stancode=stancode, datahash=datahash,
-             backend=backend, sampling_time=sampling_time)  )
+  res <- c(
+    fit.object,
+    list(
+      draws = draws, omega = omega,
+      gammas = gammas, eps = epsmed,
+      param = param,
+      psigma = psigma, rsdmean = rsdmean, rsdsd = rsdsd, iprior = iprior,
+      xqrsd = xqrsd,
+      N = n, Ncens = Ncens, p = p,
+      alphas = al, betas = be, taus = ta, tauInfo = tauInfo,
+      xbar = xbar, zbar = zbar, Design = atr, zDesign = zatr,
+      scale.pred = c("log odds", "Odds Ratio"),
+      x = if (x) X, y = if (y) Y, z = if (x) Z,
+      loo = Loo, lootime = lootime,
+      clusterInfo = if (length(cluster)) {
+        list(
+          cluster = if (x) cluster else NULL,
+          n = Nc, name = clustername
+        )
+      },
+      opt = opt, diagnostics = diagnostics,
+      iter = iter, chains = chains, stancode = stancode, datahash = datahash,
+      backend = backend, sampling_time = sampling_time
+    )
+  )
 
-  if(iprior == 0) res$conc   <- conc
-  if(iprior == 2) res$ascale <- ascale
-	class(res) <- c('blrm', 'rmsb', 'rms')
-  if(length(file)) {
+  if (iprior == 0) res$conc <- conc
+  if (iprior == 2) res$ascale <- ascale
+  class(res) <- c("blrm", "rmsb", "rms")
+  if (length(file)) {
     ## When the fit object is serialized by saveRDS (same issue with save()),
     ## any function in the fit object will have a huge environment stored
     ## with it.  So instead store the function as character strings.
-    if(length(cppo)) {
-      res2      <- res
+    if (length(cppo)) {
+      res2 <- res
       res2$cppo <- deparse(cppo)
-      saveRDS(res2, file, compress='xz')
-    } else saveRDS(res, file, compress='xz')
+      saveRDS(res2, file, compress = "xz")
+    } else {
+      saveRDS(res, file, compress = "xz")
+    }
   }
   res$rstan <- g
-	res
+  res
 }
 
 ##' Compute Indexes of Predictive Accuracy and Their Uncertainties
@@ -763,100 +879,120 @@ blrm <- function(formula, ppo=NULL, cppo=NULL,
 ##' @author Frank Harrell
 ##' @export
 ##' @importFrom utils capture.output
-blrmStats <- function(fit, ns=400, prob=0.95, pl=FALSE,
-                      dist=c('density', 'hist')) {
+blrmStats <- function(fit, ns = 400, prob = 0.95, pl = FALSE,
+                      dist = c("density", "hist")) {
   dist <- match.arg(dist)
 
-  f <- fit[c('x', 'y', 'z', 'non.slopes', 'interceptRef', 'pppo', 'cppo',
-             'draws', 'ylevels', 'tauInfo')]
+  f <- fit[c(
+    "x", "y", "z", "non.slopes", "interceptRef", "pppo", "cppo",
+    "draws", "ylevels", "tauInfo"
+  )]
   X <- f$x
   Z <- f$z
   y <- f$y
-  if(length(X) == 0 | length(y) == 0)
-    stop('must have specified x=TRUE, y=TRUE to blrm')
-  if(is.matrix(y)) {
-    if(any(y[, 1] != y[, 2])) warning('some observations are censored but only left endpoint used in summary statistics')
+  if (length(X) == 0 | length(y) == 0) {
+    stop("must have specified x=TRUE, y=TRUE to blrm")
+  }
+  if (is.matrix(y)) {
+    if (any(y[, 1] != y[, 2])) warning("some observations are censored but only left endpoint used in summary statistics")
     y <- y[, 1]
-    }
+  }
   y <- as.integer(y) - 1
-  nrp    <- f$non.slopes
-  kmid   <- f$interceptRef  # intercept close to median
-  s      <- tauFetch(f, intercept=kmid, what='nontau')
+  nrp <- f$non.slopes
+  kmid <- f$interceptRef # intercept close to median
+  s <- tauFetch(f, intercept = kmid, what = "nontau")
   # old fit objects did not include pppo for non-PPO models:
-  pppo   <- if(! length(f$pppo)) 0 else f$pppo
+  pppo <- if (!length(f$pppo)) 0 else f$pppo
   ## tauFetch automatically multiplies tau by cppo function if present
-  if(pppo > 0) stau <- tauFetch(f, intercept=kmid, what='tau')
+  if (pppo > 0) stau <- tauFetch(f, intercept = kmid, what = "tau")
   ndraws <- nrow(s)
-  ns     <- min(ndraws, ns)
-  if(ns < ndraws) {
-    j <- sample(1 : ndraws, ns, replace=FALSE)
-    s <- s[j,, drop=FALSE]
-    if(pppo > 0) stau <- stau[j,, drop=FALSE]
-    }
-  ylev  <- f$ylevels
-  ybin  <- length(ylev) == 2
-  stats <- matrix(NA, nrow=ns, ncol=8)
-  colnames(stats) <- c('Dxy', 'C', 'g', 'gp', 'B', 'EV', 'v', 'vp')
+  ns <- min(ndraws, ns)
+  if (ns < ndraws) {
+    j <- sample(1:ndraws, ns, replace = FALSE)
+    s <- s[j, , drop = FALSE]
+    if (pppo > 0) stau <- stau[j, , drop = FALSE]
+  }
+  ylev <- f$ylevels
+  ybin <- length(ylev) == 2
+  stats <- matrix(NA, nrow = ns, ncol = 8)
+  colnames(stats) <- c("Dxy", "C", "g", "gp", "B", "EV", "v", "vp")
   dxy <- function(x, y) {
-    con  <- survival::concordancefit(survival::Surv(y), x)$count
-    conc <- con['concordant']; disc <- con['discordant']
+    con <- survival::concordancefit(survival::Surv(y), x)$count
+    conc <- con["concordant"]
+    disc <- con["discordant"]
     (conc - disc) / (conc + disc)
-    }
-  brier <- function(x, y) mean((x - y) ^ 2)
-  br2   <- function(p) var(p) / (var(p) + sum(p * (1 - p)) / length(p))
+  }
+  brier <- function(x, y) mean((x - y)^2)
+  br2 <- function(p) var(p) / (var(p) + sum(p * (1 - p)) / length(p))
 
   nobs <- length(y)
-  is <- if((nobs <= 10000) || (length(ylev) == 2)) 1 : nobs else
-              sample(1 : nobs, 10000, replace=FALSE)
-
-  for(i in 1 : ns) {
-    beta  <- s[i,, drop=FALSE ]
-    lp    <- cbind(1, X) %*% t(beta)
-    if(pppo > 0) {
-      tau <- stau[i,, drop=FALSE]
-      lp  <- lp + Z %*% t(tau)
-      }
-    prb  <- plogis(lp)
-    d    <- dxy(lp[is], y[is])
-    C    <- (d + 1.) / 2.
-    st <- c(d, C, GiniMd(lp), GiniMd(prb),
-            brier(prb, y > kmid - 1),
-            br2(prb), var(lp), var(prb))
-    stats[i,] <- st
+  is <- if ((nobs <= 10000) || (length(ylev) == 2)) {
+    1:nobs
+  } else {
+    sample(1:nobs, 10000, replace = FALSE)
   }
-  sbar  <- colMeans(stats)
-  se    <- apply(stats, 2, sd)
-  hpd   <- apply(stats, 2, HPDint, prob=prob)
-  sym   <- apply(stats, 2, distSym)
 
-  text <- paste0(round(sbar, 3), ' [', round(hpd[1,], 3), ', ',
-                 round(hpd[2,], 3), ']')
-  Stats <- rbind(Mean=sbar, SE=se, hpd=hpd, Symmetry=sym)
+  for (i in 1:ns) {
+    beta <- s[i, , drop = FALSE]
+    lp <- cbind(1, X) %*% t(beta)
+    if (pppo > 0) {
+      tau <- stau[i, , drop = FALSE]
+      lp <- lp + Z %*% t(tau)
+    }
+    prb <- plogis(lp)
+    d <- dxy(lp[is], y[is])
+    C <- (d + 1.) / 2.
+    st <- c(
+      d, C, GiniMd(lp), GiniMd(prb),
+      brier(prb, y > kmid - 1),
+      br2(prb), var(lp), var(prb)
+    )
+    stats[i, ] <- st
+  }
+  sbar <- colMeans(stats)
+  se <- apply(stats, 2, sd)
+  hpd <- apply(stats, 2, HPDint, prob = prob)
+  sym <- apply(stats, 2, distSym)
+
+  text <- paste0(
+    round(sbar, 3), " [", round(hpd[1, ], 3), ", ",
+    round(hpd[2, ], 3), "]"
+  )
+  Stats <- rbind(Mean = sbar, SE = se, hpd = hpd, Symmetry = sym)
   statnames <- colnames(Stats)
   names(text) <- statnames
 
-  if(pl) {
-    oldpar <- par(no.readonly=TRUE)
+  if (pl) {
+    oldpar <- par(no.readonly = TRUE)
     on.exit(par(oldpar))
-    par(mfrow=c(4,2), mar=c(3, 2, 0.5, 0.5), mgp=c(1.75, .55, 0))
-    for(w in setdiff(statnames, 'C')) {
+    par(mfrow = c(4, 2), mar = c(3, 2, 0.5, 0.5), mgp = c(1.75, .55, 0))
+    for (w in setdiff(statnames, "C")) {
       p <- switch(dist,
-             density = {
-               den <- density(stats[, w])
-               plot(den, xlab=w, ylab='', type='l', main='') },
-             hist = {
-               den <- hist(stats[, w], probability=TRUE,
-                           nclass=100, xlab=w, ylab='', main='')
-               den$x <- den$breaks; den$y <- den$density } )
+        density = {
+          den <- density(stats[, w])
+          plot(den, xlab = w, ylab = "", type = "l", main = "")
+        },
+        hist = {
+          den <- hist(stats[, w],
+            probability = TRUE,
+            nclass = 100, xlab = w, ylab = "", main = ""
+          )
+          den$x <- den$breaks
+          den$y <- den$density
+        }
+      )
       ref <- c(sbar[w], hpd[1, w], hpd[2, w])
-      abline(v=ref, col=gray(0.85))
-      text(min(den$x), max(den$y), paste0('Symmetry:', round(sym[w], 2)),
-           adj=c(0, 1), cex=0.7)
+      abline(v = ref, col = gray(0.85))
+      text(min(den$x), max(den$y), paste0("Symmetry:", round(sym[w], 2)),
+        adj = c(0, 1), cex = 0.7
+      )
     }
   }
-  structure(list(stats=Stats, text=text, ndraws=ndraws, ns=ns,
-                 non.slopes=nrp, intercept=kmid), class='blrmStats')
-  }
+  structure(list(
+    stats = Stats, text = text, ndraws = ndraws, ns = ns,
+    non.slopes = nrp, intercept = kmid
+  ), class = "blrmStats")
+}
 
 ##' Print Details for `blrmStats` Predictive Accuracy Measures
 ##'
@@ -873,24 +1009,32 @@ blrmStats <- function(fit, ns=400, prob=0.95, pl=FALSE,
 ##' }
 ##' @author Frank Harrell
 ##' @export
-print.blrmStats <- function(x, dec=3, ...) {
-  ns <- x$ns; ndraws <- x$ndraws
-  if(ns < ndraws)
-    cat('Indexes computed for a random sample of', ns, 'of', ndraws,
-        'posterior draws\n\n')
-  else
-    cat('Indexes computed on', ndraws, 'posterior draws\n\n')
+print.blrmStats <- function(x, dec = 3, ...) {
+  ns <- x$ns
+  ndraws <- x$ndraws
+  if (ns < ndraws) {
+    cat(
+      "Indexes computed for a random sample of", ns, "of", ndraws,
+      "posterior draws\n\n"
+    )
+  } else {
+    cat("Indexes computed on", ndraws, "posterior draws\n\n")
+  }
 
-  if(x$non.slopes > 1)
-    cat('gp, B, EV, and vp are for intercept', x$intercept,
-        'out of', x$non.slopes, 'intercepts\n\n')
+  if (x$non.slopes > 1) {
+    cat(
+      "gp, B, EV, and vp are for intercept", x$intercept,
+      "out of", x$non.slopes, "intercepts\n\n"
+    )
+  }
   print(round(x$stats, dec))
-  cat('\nDxy: 2*(C - 0.5)   C: concordance probability',
-      'g: Gini mean |difference| on linear predictor (lp)',
-      'gp: Gini on predicted probability        B: Brier score',
-      'EV: explained variation on prob. scale   v: var(lp)   vp: var(prob)\n',
-      sep='\n')
-    }
+  cat("\nDxy: 2*(C - 0.5)   C: concordance probability",
+    "g: Gini mean |difference| on linear predictor (lp)",
+    "gp: Gini on predicted probability        B: Brier score",
+    "EV: explained variation on prob. scale   v: var(lp)   vp: var(prob)\n",
+    sep = "\n"
+  )
+}
 
 
 ##' Print [blrm()] Results
@@ -913,132 +1057,171 @@ print.blrmStats <- function(x, dec=3, ...) {
 ##' }
 ##' @author Frank Harrell
 ##' @export
-print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
-                       prob=0.95, ns=400, title=NULL, ...) {
-  latex <- prType() == 'latex'
+print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
+                       prob = 0.95, ns = 400, title = NULL, ...) {
+  latex <- prType() == "latex"
 
-  if(! length(title))
-    title <- paste0('Bayesian',
-                    if(length(x$cppo))        ' Constrained',
-                    if(x$pppo > 0)            ' Partial',
-                    if(length(x$ylevels) > 2) ' Proportional Odds Ordinal',
-                    ' Logistic Model')
+  if (!length(title)) {
+    title <- paste0(
+      "Bayesian",
+      if (length(x$cppo)) " Constrained",
+      if (x$pppo > 0) " Partial",
+      if (length(x$ylevels) > 2) " Proportional Odds Ordinal",
+      " Logistic Model"
+    )
+  }
   iprior <- x$iprior
-  if(! length(iprior)) iprior <- 0   ## backward compatibility
+  if (!length(iprior)) iprior <- 0 ## backward compatibility
   iprior <- as.character(iprior)
-  conc   <- x[['conc']]
+  conc <- x[["conc"]]
   ascale <- x$ascale
   subtitle <-
     switch(iprior,
-           '0' = paste('Dirichlet Priors With Concentration Parameter',
-                     round(conc, 3), 'for Intercepts'),
-           '1' = 'Non-informative Priors for Intercepts',
-           '2' = paste('t-Distribution Priors With 3 d.f. and Scale Parameter',
-                     round(ascale, 2), 'for Intercepts')
-           )
+      "0" = paste(
+        "Dirichlet Priors With Concentration Parameter",
+        round(conc, 3), "for Intercepts"
+      ),
+      "1" = "Non-informative Priors for Intercepts",
+      "2" = paste(
+        "t-Distribution Priors With 3 d.f. and Scale Parameter",
+        round(ascale, 2), "for Intercepts"
+      )
+    )
 
   z <- list()
   k <- 0
 
-  if(length(x$freq) > 3 && length(x$freq) < 50) {
+  if (length(x$freq) > 3 && length(x$freq) < 50) {
     k <- k + 1
-    z[[k]] <- list(type='print', list(x$freq),
-                   title='Frequencies of Responses')
+    z[[k]] <- list(
+      type = "print", list(x$freq),
+      title = "Frequencies of Responses"
+    )
   }
-  if(length(x$na.action)) {
+  if (length(x$na.action)) {
     k <- k + 1
-    z[[k]] <- list(type=paste('naprint',class(x$na.action),sep='.'),
-                   list(x$na.action))
+    z[[k]] <- list(
+      type = paste("naprint", class(x$na.action), sep = "."),
+      list(x$na.action)
+    )
   }
   qro <- function(x) {
     r <- round(c(median(x), HPDint(x, prob)), 4)
-    paste0(r[1], ' [', r[2], ', ', r[3], ']')
-    }
-  ci  <- x$clusterInfo
+    paste0(r[1], " [", r[2], ", ", r[3], "]")
+  }
+  ci <- x$clusterInfo
   sigmasum <- NULL
-  if(length(ci)) sigmasum <- qro(x$omega[, 'sigmag'])
+  if (length(ci)) sigmasum <- qro(x$omega[, "sigmag"])
 
   loo <- x$loo
- elpd_loo <- p_loo <- looic <- NULL
-  if(length(loo)) {
+  elpd_loo <- p_loo <- looic <- NULL
+  if (length(loo)) {
     lo <- loo$estimates
-    pm <- if(prType() == 'plain') '+/-' else
-              markupSpecs[[prType()]][['plminus']]
+    pm <- if (prType() == "plain") {
+      "+/-"
+    } else {
+      markupSpecs[[prType()]][["plminus"]]
+    }
     nlo <- rownames(lo)
-     lo <- paste0(round(lo[, 'Estimate'], 2), pm, round(lo[, 'SE'], 2))
-    elpd_loo <- lo[1]; p_loo <- lo[2]; looic <- lo[3]
+    lo <- paste0(round(lo[, "Estimate"], 2), pm, round(lo[, "SE"], 2))
+    elpd_loo <- lo[1]
+    p_loo <- lo[2]
+    looic <- lo[3]
   }
   Ncens <- x$Ncens
-  L     <- if(Ncens[1] > 0) paste0('L=', Ncens[1])
-  R     <- if(Ncens[2] > 0) paste0('R=', Ncens[2])
-  int   <- if(Ncens[3] > 0) paste0('I=', Ncens[3])
-  ce    <- if(sum(Ncens) > 0) sum(Ncens)
-  ced   <- if(sum(Ncens) > 0)
-             paste0(paste(c(L, R, int), collapse=', '))
-  stime <- if(length(x$sampling_time)) paste0(round(x$sampling_time, 1), 's')
+  L <- if (Ncens[1] > 0) paste0("L=", Ncens[1])
+  R <- if (Ncens[2] > 0) paste0("R=", Ncens[2])
+  int <- if (Ncens[3] > 0) paste0("I=", Ncens[3])
+  ce <- if (sum(Ncens) > 0) sum(Ncens)
+  ced <- if (sum(Ncens) > 0) {
+    paste0(paste(c(L, R, int), collapse = ", "))
+  }
+  stime <- if (length(x$sampling_time)) paste0(round(x$sampling_time, 1), "s")
 
-  misc <- rms::reListclean(Obs             = x$N,
-                      Censored        = ce,
-                      ' '             = ced,
-                      Draws           = nrow(x$draws),
-                      Chains          = x$chains,
-                      Time            = stime,
-                      Imputations     = x$n.impute,
-                      p               = x$p,
-                      'Cluster on'    = ci$name,
-                      Clusters        = ci$n,
-                      'sigma gamma'   = sigmasum)
+  misc <- rms::reListclean(
+    Obs = x$N,
+    Censored = ce,
+    " " = ced,
+    Draws = nrow(x$draws),
+    Chains = x$chains,
+    Time = stime,
+    Imputations = x$n.impute,
+    p = x$p,
+    "Cluster on" = ci$name,
+    Clusters = ci$n,
+    "sigma gamma" = sigmasum
+  )
 
-  if(length(x$freq) < 4) {
-    names(x$freq) <- paste(if(latex)'~~' else ' ',
-                           names(x$freq), sep='')
+  if (length(x$freq) < 4) {
+    names(x$freq) <- paste(if (latex) "~~" else " ",
+      names(x$freq),
+      sep = ""
+    )
     misc <- c(misc[1], x$freq, misc[-1])
   }
-  a <- blrmStats(x, ns=ns)$text
-  mixed <- rms::reListclean('LOO log L'  = elpd_loo,
-                      'LOO IC'      = looic,
-                      'Effective p' = p_loo,
-                      B             = a['B'])
+  a <- blrmStats(x, ns = ns)$text
+  mixed <- rms::reListclean(
+    "LOO log L" = elpd_loo,
+    "LOO IC" = looic,
+    "Effective p" = p_loo,
+    B = a["B"]
+  )
 
-  disc <- rms::reListclean(g       = a['g'],
-                      gp      = a['gp'],
-                      EV      = a['EV'],
-                      v       = a['v'],
-                      vp      = a['vp'])
+  disc <- rms::reListclean(
+    g = a["g"],
+    gp = a["gp"],
+    EV = a["EV"],
+    v = a["v"],
+    vp = a["vp"]
+  )
 
-  discr <- rms::reListclean(C       = a['C'],
-                      Dxy     = a['Dxy'])
+  discr <- rms::reListclean(
+    C = a["C"],
+    Dxy = a["Dxy"]
+  )
 
 
-  headings <- c('','Mixed Calibration/\nDiscrimination Indexes',
-                   'Discrimination\nIndexes',
-                   'Rank Discrim.\nIndexes')
+  headings <- c(
+    "", "Mixed Calibration/\nDiscrimination Indexes",
+    "Discrimination\nIndexes",
+    "Rank Discrim.\nIndexes"
+  )
 
   data <- list(misc, c(mixed, NA), c(disc, NA), c(discr, NA))
   k <- k + 1
-  z[[k]] <- list(type='stats', list(headings=headings, data=data))
+  z[[k]] <- list(type = "stats", list(headings = headings, data = data))
 
-  if(coefs) {
+  if (coefs) {
     k <- k + 1
-    z[[k]] <- list(type='coefmatrix',
-                   list(bayes=print.rmsb(x, prob=prob, intercepts=intercepts,
-                                         pr=FALSE)))
+    z[[k]] <- list(
+      type = "coefmatrix",
+      list(bayes = print.rmsb(x,
+        prob = prob, intercepts = intercepts,
+        pr = FALSE
+      ))
+    )
   }
 
-  if(length(x$pcontrast)) {
+  if (length(x$pcontrast)) {
     k <- k + 1
-    z[[k]] <- list(type='print', list(deparse(x$pcontrast)),
-                   title='Contrasts Given Priors')
-    }
+    z[[k]] <- list(
+      type = "print", list(deparse(x$pcontrast)),
+      title = "Contrasts Given Priors"
+    )
+  }
 
-  if(length(x$npcontrast)) {
+  if (length(x$npcontrast)) {
     k <- k + 1
-    z[[k]] <- list(type='print', list(deparse(x$npcontrast)),
-                   title='Contrasts Given Priors for Non-Proportional Odds Effects')
-    }
+    z[[k]] <- list(
+      type = "print", list(deparse(x$npcontrast)),
+      title = "Contrasts Given Priors for Non-Proportional Odds Effects"
+    )
+  }
 
-  rms::prModFit(x, title=title, z, digits=dec, coefs=coefs,
-                subtitle=subtitle, ...)
+  rms::prModFit(x,
+    title = title, z, digits = dec, coefs = coefs,
+    subtitle = subtitle, ...
+  )
 }
 
 ##' Make predictions from a [blrm()] fit
@@ -1065,244 +1248,280 @@ print.blrm <- function(x, dec=4, coefs=TRUE, intercepts=x$non.slopes < 10,
 ##' @export
 predict.blrm <-
   function(object, ...,
-           kint=NULL, ycut=NULL, zcppo=TRUE, Zmatrix=TRUE,
-           fun=NULL, funint=TRUE,
-           type=c("lp","fitted","fitted.ind","mean","x","data.frame",
-                  "terms", "cterms", "ccterms", "adjto", "adjto.data.frame",
-                  "model.frame"),
-           se.fit=FALSE, codes=FALSE,
-           posterior.summary=c('mean', 'median', 'all'), cint=0.95)
-{
+           kint = NULL, ycut = NULL, zcppo = TRUE, Zmatrix = TRUE,
+           fun = NULL, funint = TRUE,
+           type = c(
+             "lp", "fitted", "fitted.ind", "mean", "x", "data.frame",
+             "terms", "cterms", "ccterms", "adjto", "adjto.data.frame",
+             "model.frame"
+           ),
+           se.fit = FALSE, codes = FALSE,
+           posterior.summary = c("mean", "median", "all"), cint = 0.95) {
+    type <- match.arg(type)
+    posterior.summary <- match.arg(posterior.summary)
 
-  type              <- match.arg(type)
-  posterior.summary <- match.arg(posterior.summary)
-
-  if(se.fit) warning('se.fit does not apply to Bayesian models')
-  if(posterior.summary == 'all' && ! missing(cint) && cint)
-    message('cint ignored when posterior.summary="all"')
-
-  kintgiven <- length(kint) > 0
-  iref <- object$interceptRef
-  if(! kintgiven) kint <- iref
-
-  ylevels   <- object$ylevels
-  ycutgiven <- length(ycut) > 0
-  # if(kintgiven && ycutgiven) stop('may only specify one of kint, ycut')
-  if(! ycutgiven) ycut <- ylevels[kint + 1]
-  if(ycutgiven) {
-    if(type == 'lp' && length(ycut) > 1)
-      stop('ycut may only be a scalar for type="lp"')
-    kint <- if(all.is.numeric(ylevels)) which(ylevels == ycut[1]) - 1
-            else max((1 : length(ylevels))[ylevels <= ycut[1]]) - 1
+    if (se.fit) warning("se.fit does not apply to Bayesian models")
+    if (posterior.summary == "all" && !missing(cint) && cint) {
+      message('cint ignored when posterior.summary="all"')
     }
 
-  pppo <- object$pppo
-  if(pppo == 0) zcppo <- FALSE
+    kintgiven <- length(kint) > 0
+    iref <- object$interceptRef
+    if (!kintgiven) kint <- iref
 
-  if(type == 'x' && (pppo == 0 || ! Zmatrix))
-    return(predictrms(object, ..., type='x'))
+    ylevels <- object$ylevels
+    ycutgiven <- length(ycut) > 0
+    # if(kintgiven && ycutgiven) stop('may only specify one of kint, ycut')
+    if (!ycutgiven) ycut <- ylevels[kint + 1]
+    if (ycutgiven) {
+      if (type == "lp" && length(ycut) > 1) {
+        stop('ycut may only be a scalar for type="lp"')
+      }
+      kint <- if (all.is.numeric(ylevels)) {
+        which(ylevels == ycut[1]) - 1
+      } else {
+        max((1:length(ylevels))[ylevels <= ycut[1]]) - 1
+      }
+    }
 
-  if(type %in% c('data.frame', 'terms', 'cterms', 'ccterms',
-                 'adjto', 'adjto.data.frame', 'model.frame'))
-    return(predictrms(object, ..., type=type))
+    pppo <- object$pppo
+    if (pppo == 0) zcppo <- FALSE
 
-  if(pppo > 0) {
-    cppo <- object$cppo
-    if(! length(cppo))
-      stop('only constrained partial PO models are implemented at present')
-  }
+    if (type == "x" && (pppo == 0 || !Zmatrix)) {
+      return(predictrms(object, ..., type = "x"))
+    }
 
-  X     <- predictrms(object, ..., type='x')
-  rnam  <- rownames(X)
-  n     <- nrow(X)
+    if (type %in% c(
+      "data.frame", "terms", "cterms", "ccterms",
+      "adjto", "adjto.data.frame", "model.frame"
+    )) {
+      return(predictrms(object, ..., type = type))
+    }
 
-  if(pppo > 0) {
-    Z  <- predictrms(object, ..., type='x', second=TRUE)
-    nz <- nrow(Z)
-    if(n != nz) stop('program logic error 4')
-    if(type == 'x' && zcppo) {
-      ly <- length(ycut)
-      if(nz == 1 && ly > 1) {
-        X <- X[rep(1, ly),, drop=FALSE]
-        Z <- Z[rep(1, ly),, drop=FALSE]
+    if (pppo > 0) {
+      cppo <- object$cppo
+      if (!length(cppo)) {
+        stop("only constrained partial PO models are implemented at present")
+      }
+    }
+
+    X <- predictrms(object, ..., type = "x")
+    rnam <- rownames(X)
+    n <- nrow(X)
+
+    if (pppo > 0) {
+      Z <- predictrms(object, ..., type = "x", second = TRUE)
+      nz <- nrow(Z)
+      if (n != nz) stop("program logic error 4")
+      if (type == "x" && zcppo) {
+        ly <- length(ycut)
+        if (nz == 1 && ly > 1) {
+          X <- X[rep(1, ly), , drop = FALSE]
+          Z <- Z[rep(1, ly), , drop = FALSE]
+        } else if (ly %nin% c(1, nz)) {
+          stop("ycut must be of length 1 or the number of requested predictions")
         }
-      else
-        if(ly %nin% c(1, nz))
-          stop('ycut must be of length 1 or the number of requested predictions')
-      nz   <- nrow(Z)
-      ycut <- rep(ycut, length=nz)
-      for(i in 1 : nz) Z[i,] <- Z[i,] * cppo(ycut[i])
+        nz <- nrow(Z)
+        ycut <- rep(ycut, length = nz)
+        for (i in 1:nz) Z[i, ] <- Z[i, ] * cppo(ycut[i])
       }
-    if(type == 'x') return(cbind(X, Z))
-  }
-
-  ns      <- object$non.slopes
-  tauinfo <- object$tauInfo
-
-  if(ns == 1 && length(fun) && funint)
-    stop('specifying fun= with funint=TRUE makes no sense with a binary response')
-
-  draws   <- object$draws
-  ndraws  <- nrow(draws)
-  p       <- ncol(draws)
-  cn      <- colnames(draws)
-  ints    <- draws[, 1 : ns, drop=FALSE]
-  betanam <- setdiff(cn, c(cn[1:ns], tauinfo$name))
-  betas   <- draws[, betanam, drop=FALSE]
-  if(pppo > 0) {
-    taunam <- tauinfo$name
-    taus   <- draws[, taunam, drop=FALSE]
-  }
-
-  postsum <- switch(posterior.summary, mean=mean, median=median,
-                    all=function(z) z)
-
-  if(type == 'lp') {
-    ## If linear predictor is requested, only one intercept applies and
-    ## if the HPD interval is not requested, don't need to keep draws after
-    ## getting posterior summaries of parameters
-    ## Note that fun= that is not a function of all the intercepts can be
-    ## simply applied to linear predictor at reference intercept
-    if(length(ycut) %nin% c(1, n))
-      stop('ycut must be of length 1 or the number of requested predictions')
-    ycut <- rep(ycut, length=n)
-
-    draws1int <- draws[, c(kint, (ns + 1) : p), drop=FALSE]
-
-    if(posterior.summary != 'all' &&
-       (! length(fun) || ! funint) & ! cint) {
-      if(pppo > 0) {
-        for(i in 1 : n) Z[i,] <- Z[i,] * cppo(ycut[i])
-        X     <- cbind(X, Z)
+      if (type == "x") {
+        return(cbind(X, Z))
       }
-      cof   <- apply(draws1int, 2, postsum)
-      lp    <- matxv(X, cof)
-      if(length(fun)) lp <- fun(lp)
-      return(lp)
     }
 
-    ## Compute lp and for all posterior draws to create an ndraws x n matrix
-    if(! length(fun) || ! funint ) {
-      if(pppo > 0) {
-        for(i in 1 : n) Z[i,] <- Z[i,] * cppo(ycut[i])
-        X <- cbind(X, Z)
+    ns <- object$non.slopes
+    tauinfo <- object$tauInfo
+
+    if (ns == 1 && length(fun) && funint) {
+      stop("specifying fun= with funint=TRUE makes no sense with a binary response")
+    }
+
+    draws <- object$draws
+    ndraws <- nrow(draws)
+    p <- ncol(draws)
+    cn <- colnames(draws)
+    ints <- draws[, 1:ns, drop = FALSE]
+    betanam <- setdiff(cn, c(cn[1:ns], tauinfo$name))
+    betas <- draws[, betanam, drop = FALSE]
+    if (pppo > 0) {
+      taunam <- tauinfo$name
+      taus <- draws[, taunam, drop = FALSE]
+    }
+
+    postsum <- switch(posterior.summary,
+      mean = mean,
+      median = median,
+      all = function(z) z
+    )
+
+    if (type == "lp") {
+      ## If linear predictor is requested, only one intercept applies and
+      ## if the HPD interval is not requested, don't need to keep draws after
+      ## getting posterior summaries of parameters
+      ## Note that fun= that is not a function of all the intercepts can be
+      ## simply applied to linear predictor at reference intercept
+      if (length(ycut) %nin% c(1, n)) {
+        stop("ycut must be of length 1 or the number of requested predictions")
       }
-      lp   <- t(matxv(X, draws1int, bmat=TRUE))
-      if(length(fun)) lp <- fun(lp)
-      if(posterior.summary == 'all') return(lp)
-      lpsum <- apply(lp, 2, postsum)
-      if(! cint) return(lpsum)
+      ycut <- rep(ycut, length = n)
 
-      ## When not 'all' the no-cint case was handled above.  Compute HPD
-      ## intervals for each prediction
-      hpd   <- apply(lp, 2, HPDint, prob=cint)
-      return(list(linear.predictors=lpsum, lower=hpd[1,], upper=hpd[2,]))
+      draws1int <- draws[, c(kint, (ns + 1):p), drop = FALSE]
+
+      if (posterior.summary != "all" &&
+        (!length(fun) || !funint) & !cint) {
+        if (pppo > 0) {
+          for (i in 1:n) Z[i, ] <- Z[i, ] * cppo(ycut[i])
+          X <- cbind(X, Z)
+        }
+        cof <- apply(draws1int, 2, postsum)
+        lp <- matxv(X, cof)
+        if (length(fun)) lp <- fun(lp)
+        return(lp)
+      }
+
+      ## Compute lp and for all posterior draws to create an ndraws x n matrix
+      if (!length(fun) || !funint) {
+        if (pppo > 0) {
+          for (i in 1:n) Z[i, ] <- Z[i, ] * cppo(ycut[i])
+          X <- cbind(X, Z)
+        }
+        lp <- t(matxv(X, draws1int, bmat = TRUE))
+        if (length(fun)) lp <- fun(lp)
+        if (posterior.summary == "all") {
+          return(lp)
+        }
+        lpsum <- apply(lp, 2, postsum)
+        if (!cint) {
+          return(lpsum)
+        }
+
+        ## When not 'all' the no-cint case was handled above.  Compute HPD
+        ## intervals for each prediction
+        hpd <- apply(lp, 2, HPDint, prob = cint)
+        return(list(linear.predictors = lpsum, lower = hpd[1, ], upper = hpd[2, ]))
+      }
+
+      ## What's left is a complex linear predictor request, i.e., for
+      ## a function that must use all the intercepts from each draw
+
+      xb <- t(matxv(X, cbind(ints[, iref], betas), bmat = TRUE))
+      ztau <- if (pppo > 0) t(matxv(Z, taus, bmat = TRUE))
+      r <- matrix(NA, nrow = ndraws, ncol = n)
+      for (i in 1:ndraws) {
+        r[i, ] <- fun(xb[i, ], lptau = ztau[i, ], intercepts = ints[i, ], codes = codes)
+      }
+      if (posterior.summary == "all") {
+        return(r)
+      }
+      rsum <- apply(r, 2, postsum)
+      if (!cint) {
+        return(rsum)
+      }
+      hpd <- apply(r, 2, HPDint, prob = cint)
+      r <- list(linear.predictors = rsum, lower = hpd[1, ], upper = hpd[2, ])
+      return(r)
     }
 
-    ## What's left is a complex linear predictor request, i.e., for
-    ## a function that must use all the intercepts from each draw
+    ## What's left is type=fitted, fitted.ind
 
-    xb   <- t(matxv(X, cbind(ints[, iref], betas), bmat=TRUE))
-    ztau <- if(pppo > 0) t(matxv(Z, taus, bmat=TRUE))
-    r    <- matrix(NA, nrow=ndraws, ncol=n)
-    for(i in 1 : ndraws)
-      r[i, ] <- fun(xb[i, ], lptau=ztau[i, ], intercepts=ints[i, ], codes=codes)
-    if(posterior.summary == 'all') return(r)
-    rsum <- apply(r, 2, postsum)
-    if(! cint) return(rsum)
-    hpd  <- apply(r, 2, HPDint, prob=cint)
-    r <- list(linear.predictors=rsum, lower=hpd[1,], upper=hpd[2,])
-    return(r)
-  }
-
-  ## What's left is type=fitted, fitted.ind
-
-  ## Get cumulative probability function used
-  link    <- object$link
-  cumprob <- eval(rms::probabilityFamilies[[link]][1])
-  # Handle binary logistic model
-  if(ns == 1) return(cumprob(sweep(betas %*% t(X), 1, ints[, 1], '+')))
-
-  cnam  <- cn[1:ns]
-  # First intercept corresponds to second distinct Y value
-  if(pppo > 0) cppos <- cppo(ylevels[-1])
-
-  ynam <- paste(object$yname, "=", ylevels, sep="")
-  PP   <- array(NA, dim=c(ndraws, n, ns),
-                dimnames=list(NULL, rnam, cnam))
-  PPeq <- array(NA, dim=c(ndraws, n, ns + 1),
-                dimnames=list(NULL, rnam, ynam))
-
-  for(i in 1 : ndraws) {
-    inti    <- ints[i, ]               # alphas for ith draw
-    betai   <- betas[i,, drop=FALSE]
-    xb      <- X %*% t(betai)          # n x 1
-    if(pppo > 0) {
-      taui <- taus[i,, drop=FALSE]
-      zt   <- Z %*% t(taui)            # n x 1
+    ## Get cumulative probability function used
+    link <- object$link
+    cumprob <- eval(rms::probabilityFamilies[[link]][1])
+    # Handle binary logistic model
+    if (ns == 1) {
+      return(cumprob(sweep(betas %*% t(X), 1, ints[, 1], "+")))
     }
-    for(j in 1 : n) {
-      ep <- inti + xb[j]    # 1 x ns
-      if(pppo > 0) ep <- ep + cppos * zt[j]
-      ep <- cumprob(ep)
-      PP[i, j, ] <- ep
-      if(type == 'fitted.ind') PPeq[i, j, ] <- c(1., ep) - c(ep, 0.)
+
+    cnam <- cn[1:ns]
+    # First intercept corresponds to second distinct Y value
+    if (pppo > 0) cppos <- cppo(ylevels[-1])
+
+    ynam <- paste(object$yname, "=", ylevels, sep = "")
+    PP <- array(NA,
+      dim = c(ndraws, n, ns),
+      dimnames = list(NULL, rnam, cnam)
+    )
+    PPeq <- array(NA,
+      dim = c(ndraws, n, ns + 1),
+      dimnames = list(NULL, rnam, ynam)
+    )
+
+    for (i in 1:ndraws) {
+      inti <- ints[i, ] # alphas for ith draw
+      betai <- betas[i, , drop = FALSE]
+      xb <- X %*% t(betai) # n x 1
+      if (pppo > 0) {
+        taui <- taus[i, , drop = FALSE]
+        zt <- Z %*% t(taui) # n x 1
+      }
+      for (j in 1:n) {
+        ep <- inti + xb[j] # 1 x ns
+        if (pppo > 0) ep <- ep + cppos * zt[j]
+        ep <- cumprob(ep)
+        PP[i, j, ] <- ep
+        if (type == "fitted.ind") PPeq[i, j, ] <- c(1., ep) - c(ep, 0.)
+      }
     }
-  }
 
-  if(posterior.summary == 'all')
-    return(switch(type,
-                  fitted     = PP,
-                  fitted.ind = PPeq))
+    if (posterior.summary == "all") {
+      return(switch(type,
+        fitted     = PP,
+        fitted.ind = PPeq
+      ))
+    }
 
-  h <- function(x) {
-    s  <- postsum(x)
-    ci <- HPDint(x, cint)
-    r  <- c(s, ci)
-    names(r)[1] <- posterior.summary
+    h <- function(x) {
+      s <- postsum(x)
+      ci <- HPDint(x, cint)
+      r <- c(s, ci)
+      names(r)[1] <- posterior.summary
+      r
+    }
+
+    ## Function to summarize a 3-d array and transform the results
+    ## to a data frame with variables x (row names of predictions), y level,
+    ## mean/median, Lower, Upper
+    ## Input is ndraws x # predicton requests x # y categories (less 1 if cum.p.)
+
+    s3 <- function(x) {
+      yl <- if (type == "fitted") cnam else ynam
+      d <- expand.grid(
+        y = yl, x = rnam, stat = NA, Lower = NA, Upper = NA,
+        stringsAsFactors = FALSE
+      )
+      for (i in 1:nrow(d)) {
+        u <- h(x[, d$x[i], d$y[i]])
+        d$stat[i] <- u[1]
+        d$Lower[i] <- u["Lower"]
+        d$Upper[i] <- u["Upper"]
+      }
+      names(d)[3] <- upFirst(posterior.summary)
+      d
+    }
+
+    ## Similar for a 2-d array
+    # s2 <- function(x) {
+    #  d <- expand.grid(x = rnam, stat=NA, Lower=NA, Upper=NA,
+    #                   stringsAsFactors=FALSE)
+    #  for(i in 1 : nrow(d)) {
+    #    u <- h(x[, d$x[i]])
+    #    d$stat[i]  <- u[1]
+    #    d$Lower[i] <- u['Lower']
+    #    d$Upper[i] <- u['Upper']
+    #  }
+    #  names(d)[2] <- Hmisc::upFirst(posterior.summary)
+    #  d
+    # }
+
+    r <- switch(type,
+      fitted = structure(s3(PP), draws = PP),
+      fitted.ind = structure(s3(PPeq), draws = PPeq)
+    )
+
+    class(r) <- c("predict.blrm", class(r))
     r
-    }
-
-  ## Function to summarize a 3-d array and transform the results
-  ## to a data frame with variables x (row names of predictions), y level,
-  ## mean/median, Lower, Upper
-  ## Input is ndraws x # predicton requests x # y categories (less 1 if cum.p.)
-
-  s3 <- function(x) {
-    yl <- if(type == 'fitted') cnam else ynam
-    d <- expand.grid(y = yl, x = rnam, stat=NA, Lower=NA, Upper=NA,
-                     stringsAsFactors=FALSE)
-    for(i in 1 : nrow(d)) {
-      u <- h(x[, d$x[i], d$y[i]])
-      d$stat[i] <- u[1]
-      d$Lower[i] <- u['Lower']
-      d$Upper[i] <- u['Upper']
-    }
-    names(d)[3] <- upFirst(posterior.summary)
-    d
   }
-
-  ## Similar for a 2-d array
-  #s2 <- function(x) {
-  #  d <- expand.grid(x = rnam, stat=NA, Lower=NA, Upper=NA,
-  #                   stringsAsFactors=FALSE)
-  #  for(i in 1 : nrow(d)) {
-  #    u <- h(x[, d$x[i]])
-  #    d$stat[i]  <- u[1]
-  #    d$Lower[i] <- u['Lower']
-  #    d$Upper[i] <- u['Upper']
-  #  }
-  #  names(d)[2] <- Hmisc::upFirst(posterior.summary)
-  #  d
-  #}
-
-  r <- switch(type,
-              fitted     =  structure(s3(PP),   draws=PP),
-              fitted.ind =  structure(s3(PPeq), draws=PPeq))
-
-  class(r) <- c('predict.blrm', class(r))
-  r
-}
 
 ##' Print Predictions for [blrm()]
 ##'
@@ -1312,10 +1531,10 @@ predict.blrm <-
 ##' @param ... ignored
 ##' @author Frank Harrell
 ##' @export
-print.predict.blrm <- function(x, digits=3, ...) {
+print.predict.blrm <- function(x, digits = 3, ...) {
   numvar <- sapply(x, is.numeric)
   numvar <- names(numvar)[numvar]
-  for(j in numvar) x[, j] <- round(x[, j], digits)
+  for (j in numvar) x[, j] <- round(x[, j], digits)
   print.data.frame(x)
 }
 
@@ -1331,55 +1550,61 @@ print.predict.blrm <- function(x, digits=3, ...) {
 ##' @author Frank Harrell
 ##' @method Mean blrm
 ##' @export
-Mean.blrm <- function(object, codes=FALSE,
-                      posterior.summary=c('mean', 'median'), ...) {
+Mean.blrm <- function(object, codes = FALSE,
+                      posterior.summary = c("mean", "median"), ...) {
   posterior.summary <- match.arg(posterior.summary)
   ns <- Hmisc::num.intercepts(object)
-  if(ns < 2)
-    stop('using this function only makes sense for >2 ordered response categories')
+  if (ns < 2) {
+    stop("using this function only makes sense for >2 ordered response categories")
+  }
 
   ## Get cumulative probability function used
-  link    <- object$link
+  link <- object$link
   cumprob <- eval(probabilityFamilies[[link]][1])
 
-  cof <- coef(object, stat=posterior.summary)
-  intercepts <- cof[1 : ns]
+  cof <- coef(object, stat = posterior.summary)
+  intercepts <- cof[1:ns]
 
-  f <- function(lp=numeric(0), lptau=numeric(0),
-                intercepts=numeric(0), ylevels=numeric(0), codes=FALSE,
-                interceptRef=integer(0), cppo=NULL, cumprob=cumprob) {
+  f <- function(lp = numeric(0), lptau = numeric(0),
+                intercepts = numeric(0), ylevels = numeric(0), codes = FALSE,
+                interceptRef = integer(0), cppo = NULL, cumprob = cumprob) {
     ns <- length(intercepts)
     ## assume lp is computed at the reference intercept
     ## subtract the reference intercept so can use all intercepts
     lp <- lp - intercepts[interceptRef]
-    xb <- sapply(intercepts, '+', lp)   # n x ns matrix; adds all ints to lp
+    xb <- sapply(intercepts, "+", lp) # n x ns matrix; adds all ints to lp
 
-    if(length(lptau)) {
-      cppos <- cppo(ylevels[-1])   # first intercept corresponds to 2nd Y
-      for(j in 1 : ns)
+    if (length(lptau)) {
+      cppos <- cppo(ylevels[-1]) # first intercept corresponds to 2nd Y
+      for (j in 1:ns) {
         xb[, j] <- xb[, j] + cppos[j] * lptau
       }
-
-    if(codes) ylevels <- 1 : length(ylevels)
-    else {
-      ylevels <- as.numeric(ylevels)
-      if(any(is.na(ylevels)))
-        stop('values of response levels must be numeric when codes=FALSE')
     }
 
-    P  <- matrix(cumprob(xb), ncol=ns)
-    P  <- cbind(1, P) - cbind(P, 0)
-    m  <- drop(P %*% ylevels)
+    if (codes) {
+      ylevels <- 1:length(ylevels)
+    } else {
+      ylevels <- as.numeric(ylevels)
+      if (any(is.na(ylevels))) {
+        stop("values of response levels must be numeric when codes=FALSE")
+      }
+    }
+
+    P <- matrix(cumprob(xb), ncol = ns)
+    P <- cbind(1, P) - cbind(P, 0)
+    m <- drop(P %*% ylevels)
     names(m) <- names(lp)
     m
   }
 
   ir <- object$interceptRef
-  if(! length(ir)) ir <- 1
-  formals(f) <- list(lp=numeric(0), lptau=numeric(0), intercepts=intercepts,
-                     ylevels=object$ylevels, codes=codes,
-                     interceptRef=ir, cppo=object$cppo,
-                     cumprob=cumprob)
+  if (!length(ir)) ir <- 1
+  formals(f) <- list(
+    lp = numeric(0), lptau = numeric(0), intercepts = intercepts,
+    ylevels = object$ylevels, codes = codes,
+    interceptRef = ir, cppo = object$cppo,
+    cumprob = cumprob
+  )
   f
 }
 
@@ -1394,32 +1619,34 @@ Mean.blrm <- function(object, codes=FALSE,
 ##' @author Frank Harrell
 ##' @method Quantile blrm
 ##' @export
-Quantile.blrm <- function(object, codes=FALSE,
-                      posterior.summary=c('mean', 'median'), ...) {
+Quantile.blrm <- function(object, codes = FALSE,
+                          posterior.summary = c("mean", "median"), ...) {
   posterior.summary <- match.arg(posterior.summary)
   ns <- Hmisc::num.intercepts(object)
-  if(ns < 2)
-    stop('using this function only makes sense for >2 ordered response categories')
+  if (ns < 2) {
+    stop("using this function only makes sense for >2 ordered response categories")
+  }
 
   ## Get cumulative probability function used
-  link    <- object$link
-  pfam    <- rms::probabilityFamilies[[link]]
+  link <- object$link
+  pfam <- rms::probabilityFamilies[[link]]
   cumprob <- eval(pfam[1])
   inverse <- eval(pfam[2])
 
-  cof        <- coef(object, stat=posterior.summary)
-  intercepts <- cof[1 : ns]
+  cof <- coef(object, stat = posterior.summary)
+  intercepts <- cof[1:ns]
 
-  f <- function(q=.5, lp=numeric(0), lptau=numeric(0),
-                intercepts=numeric(0), ylevels=numeric(0), codes=FALSE,
-                interceptRef=integer(0), cppo=NULL,
-                cumprob=NULL, inverse=NULL) {
-
-    if(codes) ylevels <- 1 : length(ylevels)
-    else {
+  f <- function(q = .5, lp = numeric(0), lptau = numeric(0),
+                intercepts = numeric(0), ylevels = numeric(0), codes = FALSE,
+                interceptRef = integer(0), cppo = NULL,
+                cumprob = NULL, inverse = NULL) {
+    if (codes) {
+      ylevels <- 1:length(ylevels)
+    } else {
       ylevels <- as.numeric(ylevels)
-      if(any(is.na(ylevels)))
-        stop('values of response levels must be numeric when codes=FALSE')
+      if (any(is.na(ylevels))) {
+        stop("values of response levels must be numeric when codes=FALSE")
+      }
     }
 
     ## Solve inverse(1 - q) = a + xb; inverse(1 - q) - xb = a
@@ -1428,36 +1655,39 @@ Quantile.blrm <- function(object, codes=FALSE,
     ## Prob(Y >= y)
     lp <- lp - intercepts[interceptRef]
 
-    if(length(lptau)) {
+    if (length(lptau)) {
       ## Don't know how to handle this over all observations
       ## Do for one observation at a time
       cppos <- cppo(ylevels[-1])
-      n     <- length(lptau)
+      n <- length(lptau)
       quant <- numeric(n)
-      for(i in 1 : length(lptau)) {
+      for (i in 1:length(lptau)) {
         ints <- intercepts + cppos * lptau[i]
         quant[i] <- approx(c(cumprob(ints + lp[i]), 0), ylevels,
-                           xout=1 - q, rule=2)$y
-        }
+          xout = 1 - q, rule = 2
+        )$y
       }
-    else {
-        ## Interpolation on linear predictors scale:
-        ## z <- approx(c(intercepts, -1e100), values,
-        ##             xout=inverse(1 - q) - lp, rule=2)$y
-        ## Interpolation approximately on Y scale:
-        lpm <- mean(lp, na.rm=TRUE)
-        quant <- approx(c(cumprob(intercepts + lpm), 0), ylevels,
-                        xout=cumprob(inverse(1 - q) - lp + lpm), rule=2)$y
+    } else {
+      ## Interpolation on linear predictors scale:
+      ## z <- approx(c(intercepts, -1e100), values,
+      ##             xout=inverse(1 - q) - lp, rule=2)$y
+      ## Interpolation approximately on Y scale:
+      lpm <- mean(lp, na.rm = TRUE)
+      quant <- approx(c(cumprob(intercepts + lpm), 0), ylevels,
+        xout = cumprob(inverse(1 - q) - lp + lpm), rule = 2
+      )$y
     }
     names(quant) <- names(lp)
     quant
   }
   trans <- object$trans
-  formals(f) <- list(q=.5, lp=numeric(0), lptau=numeric(0),
-                     intercepts=intercepts,
-                     ylevels=object$ylevels, codes=codes,
-                     interceptRef=object$interceptRef,
-                     cppo=object$cppo, cumprob=cumprob, inverse=inverse)
+  formals(f) <- list(
+    q = .5, lp = numeric(0), lptau = numeric(0),
+    intercepts = intercepts,
+    ylevels = object$ylevels, codes = codes,
+    interceptRef = object$interceptRef,
+    cppo = object$cppo, cumprob = cumprob, inverse = inverse
+  )
   f
 }
 
@@ -1472,60 +1702,68 @@ Quantile.blrm <- function(object, codes=FALSE,
 ##' @method ExProb blrm
 ##' @export
 ExProb.blrm <- function(object,
-                        posterior.summary=c('mean', 'median'), ...) {
+                        posterior.summary = c("mean", "median"), ...) {
   posterior.summary <- match.arg(posterior.summary)
   ns <- num.intercepts(object)
-  if(ns < 2)
-    stop('using this function only makes sense for >2 ordered response categories')
+  if (ns < 2) {
+    stop("using this function only makes sense for >2 ordered response categories")
+  }
 
   ## Get cumulative probability function used
-  link    <- object$link
-  pfam    <- rms::probabilityFamilies[[link]]
+  link <- object$link
+  pfam <- rms::probabilityFamilies[[link]]
   cumprob <- eval(pfam[1])
 
-  ylevels    <- object$ylevels
-  cof        <- coef(object, stat=posterior.summary)
-  intercepts <- cof[1 : ns]
+  ylevels <- object$ylevels
+  cof <- coef(object, stat = posterior.summary)
+  intercepts <- cof[1:ns]
 
-  f <- function(lp=numeric(0), lptau=numeric(0),
-                y=NULL, intercepts=numeric(0),
-                ylevels=numeric(0),
-                interceptRef=integer(0), cppo=NULL,
-                cumprob=NULL, yname=NULL, codes=NULL) {
+  f <- function(lp = numeric(0), lptau = numeric(0),
+                y = NULL, intercepts = numeric(0),
+                ylevels = numeric(0),
+                interceptRef = integer(0), cppo = NULL,
+                cumprob = NULL, yname = NULL, codes = NULL) {
     lp <- lp - intercepts[interceptRef]
 
     n <- length(lp)
-    yeval <- if(length(y)) y else ylevels
-    prob <- matrix(NA, nrow=n, ncol=length(yeval))
-    if(length(yeval) > 1) colnames(prob) <- paste0('Prob(Y>=', yeval, ')')
+    yeval <- if (length(y)) y else ylevels
+    prob <- matrix(NA, nrow = n, ncol = length(yeval))
+    if (length(yeval) > 1) colnames(prob) <- paste0("Prob(Y>=", yeval, ")")
     yisnum <- all.is.numeric(ylevels)
-    if(length(lptau)) cppos <- cppo(ylevels[-1])
+    if (length(lptau)) cppos <- cppo(ylevels[-1])
 
-      for(i in 1 : n) {
-        xb <- intercepts + lp[i]
-        if(length(lptau)) xb <- xb + cppos * lptau[i]
-        cp <- c(1., cumprob(xb))  # was if(! length(y))...
-        if(yisnum) {
-          cp[yeval <= min(ylevels)] <- 1.
-          cp[yeval >  max(ylevels)] <- 0.
-        }
-        if(length(y)) {
-          cp <- if(yisnum)
-                  approx(ylevels, cp, xout=yeval, f=1, method='constant')$y
-          else cp[match(yeval, ylevels)]
-          }
-        prob[i, ] <- cp
+    for (i in 1:n) {
+      xb <- intercepts + lp[i]
+      if (length(lptau)) xb <- xb + cppos * lptau[i]
+      cp <- c(1., cumprob(xb)) # was if(! length(y))...
+      if (yisnum) {
+        cp[yeval <= min(ylevels)] <- 1.
+        cp[yeval > max(ylevels)] <- 0.
       }
-      res <- if(length(yeval) == 1) drop(prob) else
-                    list(y=ylevels, prob=prob, yname=yname)
-      structure(res, class='ExProb')
+      if (length(y)) {
+        cp <- if (yisnum) {
+          approx(ylevels, cp, xout = yeval, f = 1, method = "constant")$y
+        } else {
+          cp[match(yeval, ylevels)]
+        }
+      }
+      prob[i, ] <- cp
+    }
+    res <- if (length(yeval) == 1) {
+      drop(prob)
+    } else {
+      list(y = ylevels, prob = prob, yname = yname)
+    }
+    structure(res, class = "ExProb")
   }
-  formals(f) <- list(lp=numeric(0), lptau=numeric(0),
-                     y=NULL, intercepts=intercepts,
-                     ylevels=ylevels,
-                     interceptRef=object$interceptRef,
-                     cppo=object$cppo, cumprob=cumprob, yname=object$yname,
-                     codes=numeric(0))  # codes not used for ExProb
+  formals(f) <- list(
+    lp = numeric(0), lptau = numeric(0),
+    y = NULL, intercepts = intercepts,
+    ylevels = ylevels,
+    interceptRef = object$interceptRef,
+    cppo = object$cppo, cumprob = cumprob, yname = object$yname,
+    codes = numeric(0)
+  ) # codes not used for ExProb
   f
 }
 
@@ -1538,50 +1776,56 @@ ExProb.blrm <- function(object,
 ##' @return matrix with number of raws equal to the numnber of original draws
 ##' @author Frank Harrell
 ##' @export
-tauFetch <- function(fit, intercept, what=c('tau', 'nontau', 'both')) {
-  what   <- match.arg(what)
-  f      <- fit[c('tauInfo', 'draws', 'non.slopes', 'cppo', 'ylevels')]
-  info   <- f$tauInfo
-  draws  <- f$draws
-  nd     <- nrow(draws)
-  cn     <- colnames(draws)
-  int    <- intercept
-  nints  <- f$non.slopes
-  if(int > nints) stop('intercept is too large')
+tauFetch <- function(fit, intercept, what = c("tau", "nontau", "both")) {
+  what <- match.arg(what)
+  f <- fit[c("tauInfo", "draws", "non.slopes", "cppo", "ylevels")]
+  info <- f$tauInfo
+  draws <- f$draws
+  nd <- nrow(draws)
+  cn <- colnames(draws)
+  int <- intercept
+  nints <- f$non.slopes
+  if (int > nints) stop("intercept is too large")
   ## Keep only the intercept of interest
-  cn     <- c(cn[int], cn[-(1 : nints)])
+  cn <- c(cn[int], cn[-(1:nints)])
   nontau <- setdiff(cn, info$name)
-  cppo   <- f$cppo
-  if(length(cppo)) {   # constrained PPO model
+  cppo <- f$cppo
+  if (length(cppo)) { # constrained PPO model
     taunames <- info$name
-    if(what != 'nontau') {
+    if (what != "nontau") {
       ## First intercept is for 2nd ordered distinct Y value
       ## cppo argument is on original y scale
-      cppoint  <- cppo(f$ylevels[int + 1])
-      draws[, taunames] <- cppoint * draws[, taunames, drop=FALSE]
-      }
+      cppoint <- cppo(f$ylevels[int + 1])
+      draws[, taunames] <- cppoint * draws[, taunames, drop = FALSE]
+    }
     draws[, switch(what,
-                   tau=taunames, nontau=nontau, both=c(nontau, taunames)),
-          drop=FALSE]
-  }
-  else {
-    taunames   <- if(int > 1) subset(info, intercept == int)$name
+      tau = taunames,
+      nontau = nontau,
+      both = c(nontau, taunames)
+    ),
+    drop = FALSE
+    ]
+  } else {
+    taunames <- if (int > 1) subset(info, intercept == int)$name
     ## Partial proportional odds parameters start with the 2nd intercept
     ## for the unconstrained PPO model
     ## taunames is absent if intercept=1 and unconstrained PPO
     ## Use # taus for intercept=2 in this case
     switch(what,
-           tau    = if(! length(taunames))
-                      matrix(0, nrow=nd, ncol=sum(info$intercept == 2))
-                    else draws[, taunames, drop=FALSE],
-           nontau = draws[, nontau, drop=FALSE],
-           both   = if(! length(taunames))
-                      cbind(draws[, nontau, drop=FALSE], 0) else
-                            draws[, c(nontau, taunames), drop=FALSE]
-         )
+      tau = if (!length(taunames)) {
+        matrix(0, nrow = nd, ncol = sum(info$intercept == 2))
+      } else {
+        draws[, taunames, drop = FALSE]
+      },
+      nontau = draws[, nontau, drop = FALSE],
+      both = if (!length(taunames)) {
+        cbind(draws[, nontau, drop = FALSE], 0)
+      } else {
+        draws[, c(nontau, taunames), drop = FALSE]
+      }
+    )
   }
 }
-
 
 
 ##' Cluster Function for Random Effects
