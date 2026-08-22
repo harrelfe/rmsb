@@ -1,6 +1,7 @@
 Changes for 1.1-3 (2026-08-22)
    * blrm: added sampling.args to hash digest
    * print.blrm: changed to use new version of prModFit in rms
+   * print.rmsb: fixed old bug related to rownames being lost with drop=TRUE which surfaced with one predictor and intercepts=FALSE
 
 Changes for 1.1-2 (2025-04-13)
    * predict.blrm: fixed type='fitted' for binary Y; thanks Christian Hametner: <https://discourse.datamethods.org/t/bayesian-regression-modeling-strategies/6105/99>

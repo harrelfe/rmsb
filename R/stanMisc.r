@@ -161,10 +161,11 @@ print.rmsb <- function(x, prob=0.95, dec=4, intercepts=TRUE, pr=TRUE, ...) {
   nrp   <- num.intercepts(x)
 	s     <- x$draws
   param <- t(x$param)
-  if(! intercepts && nrp > 0) {
-    s     <- s[,   -(1 : nrp),  drop=FALSE]
-    param <- param[-(1 : nrp),, drop=FALSE]
-    }
+  if (!intercepts && nrp > 0) {
+    s <- s[, -(1:nrp), drop = FALSE]
+    param <- param[-(1:nrp), , drop = FALSE]
+  }
+  rn <- rownames(param)  # read before any drop=TRUE can lose it
   means <- param[, 'mean']
   colnames(param) <- Hmisc::upFirst(colnames(param))
 
@@ -173,7 +174,7 @@ print.rmsb <- function(x, prob=0.95, dec=4, intercepts=TRUE, pr=TRUE, ...) {
   P   <- apply(s, 2, function(u) mean(u > 0))
 	sym <- apply(s, 2, distSym)
 	w <- cbind(param, SE=se, Lower=hpd[1,], Upper=hpd[2,], P, Symmetry=sym)
-  rownames(w) <- names(means)
+  rownames(w) <- rn
   if(! pr) return(w)
 	cat(nrow(s), 'draws from the posterior distribution\n\n')
 	round(w, dec)
