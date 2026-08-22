@@ -20,7 +20,7 @@ stanDxplot(
 
 \item{which}{names of parameters to plot, defaulting to all non-intercepts.  When \code{rstan=FALSE} these are the friendly \code{rms} names, otherwise they are the \code{rstan} parameter names.  If the model fit was run through \code{stackMI} for multiple imputation, the number of traces is multiplied by the number of imputations.  Set to \code{'ALL'} to plot all parameters.}
 
-\item{rstan}{set to \code{TRUE} to use \code{\link[rstan:stanfit-method-traceplot]{rstan::traceplot()}} on a (presumed) stored \code{rstan} object in \code{x}, otherwise only real iterations are plotted and parameter values are shown as points instead of lines, with chains separated}
+\item{rstan}{set to \code{TRUE} to use \code{\link[rstan:traceplot]{rstan::traceplot()}} on a (presumed) stored \code{rstan} object in \code{x}, otherwise only real iterations are plotted and parameter values are shown as points instead of lines, with chains separated}
 
 \item{previous}{see details}
 
@@ -30,7 +30,7 @@ stanDxplot(
 
 \item{stripsize}{specifies size of chain facet label text, default is 8}
 
-\item{...}{passed to \code{\link[rstan:stanfit-method-traceplot]{rstan::traceplot()}}}
+\item{...}{passed to \code{\link[rstan:traceplot]{rstan::traceplot()}}}
 }
 \value{
 \code{ggplot2} object if \code{rstan} object was in \code{x}

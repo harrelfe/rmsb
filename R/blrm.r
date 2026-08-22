@@ -1051,7 +1051,8 @@ print.blrmStats <- function(x, dec = 3, ...) {
 ##' @examples
 ##' \dontrun{
 ##'   f <- blrm(...)
-##'   options(lang='html')   # default is lang='plain'; also can be latex
+##'   options(prType='html')   # default is prType='plain'; also can be
+##'                            # 'latex' or 'typst'
 ##'   f               # print using defaults
 ##'   print(f, posterior.summary='median')   # instead of post. means
 ##' }
@@ -1089,22 +1090,17 @@ print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
     )
 
   z <- list()
-  k <- 0
 
-  if (length(x$freq) > 3 && length(x$freq) < 50) {
-    k <- k + 1
-    z[[k]] <- list(
-      type = "print", list(x$freq),
+  if (length(x$freq) > 3 && length(x$freq) < 50)
+    z <- c(z, list(rms::prModItem(
+      "print", list(x$freq),
       title = "Frequencies of Responses"
-    )
-  }
-  if (length(x$na.action)) {
-    k <- k + 1
-    z[[k]] <- list(
-      type = paste("naprint", class(x$na.action), sep = "."),
+    )))
+  if (length(x$na.action))
+    z <- c(z, list(rms::prModItem(
+      paste("naprint", class(x$na.action), sep = "."),
       list(x$na.action)
-    )
-  }
+    )))
   qro <- function(x) {
     r <- round(c(median(x), HPDint(x, prob)), 4)
     paste0(r[1], " [", r[2], ", ", r[3], "]")
@@ -1152,6 +1148,11 @@ print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
     "sigma gamma" = sigmasum
   )
 
+  ## "~~" vs " " spacing prefix below is latex-only, missing a dedicated
+  ## typst case (typst falls into the plain-space "else" branch) --
+  ## cosmetic, not broken output, so left as-is here, matching the same
+  ## item flagged but deliberately not changed in rms's print.lrm and
+  ## print.orm.
   if (length(x$freq) < 4) {
     names(x$freq) <- paste(if (latex) "~~" else " ",
       names(x$freq),
@@ -1188,35 +1189,28 @@ print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
   )
 
   data <- list(misc, c(mixed, NA), c(disc, NA), c(discr, NA))
-  k <- k + 1
-  z[[k]] <- list(type = "stats", list(headings = headings, data = data))
+  z <- c(z, list(rms::prModItem("stats", list(headings = headings, data = data))))
 
-  if (coefs) {
-    k <- k + 1
-    z[[k]] <- list(
-      type = "coefmatrix",
+  if (coefs)
+    z <- c(z, list(rms::prModItem(
+      "coefmatrix",
       list(bayes = print.rmsb(x,
         prob = prob, intercepts = intercepts,
         pr = FALSE
       ))
-    )
-  }
+    )))
 
-  if (length(x$pcontrast)) {
-    k <- k + 1
-    z[[k]] <- list(
-      type = "print", list(deparse(x$pcontrast)),
+  if (length(x$pcontrast))
+    z <- c(z, list(rms::prModItem(
+      "print", list(deparse(x$pcontrast)),
       title = "Contrasts Given Priors"
-    )
-  }
+    )))
 
-  if (length(x$npcontrast)) {
-    k <- k + 1
-    z[[k]] <- list(
-      type = "print", list(deparse(x$npcontrast)),
+  if (length(x$npcontrast))
+    z <- c(z, list(rms::prModItem(
+      "print", list(deparse(x$npcontrast)),
       title = "Contrasts Given Priors for Non-Proportional Odds Effects"
-    )
-  }
+    )))
 
   rms::prModFit(x,
     title = title, z, digits = dec, coefs = coefs,

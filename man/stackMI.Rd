@@ -36,7 +36,7 @@ stackMI(
 
 \item{subset}{an integer or logical vector specifying the subset of observations to fit}
 
-\item{refresh}{see \link[rstan:stanmodel-method-sampling]{rstan::sampling}.  The default is 0, indicating that no progress notes are output.  If \code{refresh > 0} and \code{progress} is not \code{''}, progress output will be appended to file \code{progress}.  The default file name is \code{'stan-progress.txt'}.}
+\item{refresh}{see \link[rstan:sampling]{rstan::sampling}.  The default is 0, indicating that no progress notes are output.  If \code{refresh > 0} and \code{progress} is not \code{''}, progress output will be appended to file \code{progress}.  The default file name is \code{'stan-progress.txt'}.}
 
 \item{progress}{see \code{refresh}.  Defaults to \code{''} if \code{refresh = 0}.  Note: If running interactively but not under RStudio, \code{rstan} will open a browser window for monitoring progress.}
 

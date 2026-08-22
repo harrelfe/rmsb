@@ -38,7 +38,8 @@ Prints main results from \code{\link[=blrm]{blrm()}} along with indexes and pred
 \examples{
 \dontrun{
   f <- blrm(...)
-  options(lang='html')   # default is lang='plain'; also can be latex
+  options(prType='html')   # default is prType='plain'; also can be
+                           # 'latex' or 'typst'
   f               # print using defaults
   print(f, posterior.summary='median')   # instead of post. means
 }

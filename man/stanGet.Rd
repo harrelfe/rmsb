@@ -10,10 +10,10 @@ stanGet(object)
 \item{object}{an objected created by an \code{rms} package Bayesian fitting function}
 }
 \value{
-the object created by \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}}
+the object created by \code{\link[rstan:sampling]{rstan::sampling()}}
 }
 \description{
-Extracts the object created by \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} so that standard Stan diagnostics can be run from it
+Extracts the object created by \code{\link[rstan:sampling]{rstan::sampling()}} so that standard Stan diagnostics can be run from it
 }
 \examples{
 \dontrun{
