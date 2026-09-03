@@ -1,8 +1,18 @@
 // For constrained partial PO model with Dirichlet prior for transformed intercepts
+//
+// Note from Claude 2026-08-30:
+// Six of seven branches confirm the formula exactly. The seventh — left-censoring — looks like a genuine bug in the uploaded Stan file, not a
+// different-but-valid convention. Left-censoring's a is structurally always 1 in that branch (Stan's condition for entering it), so pposcore[a+1] collapses
+// to the constant pposcore[2] regardless of b — but the alpha term it's paired with, alpha[b], correctly does vary with b. Every other branch pairs a
+// varying alpha index with a correspondingly varying pposcore/yde index; this is the one place that pairs a varying alpha[b] with a frozen pposcore[2]. My
+// best guess is a copy-paste artifact — the bottom-category branch legitimately uses a fixed pposcore[2] (there's only ever one relevant alpha, ia never
+// varies), and this line looks like it was adapted from that one without updating the index to track b. Worth confirming with whoever wrote it, but I'd
+// treat yde(ia(i)+1,:)/yde(ia2(i)+1,:) — applied uniformly, including to left-censoring — as the more trustworthy specification, precisely because it's the
+// one that stays internally consistent across all seven branches without a special case.
 
 functions {
   // pointwise log-likelihood contributions
-  vector pw_log_lik(vector alpha, vector beta, vector tau, vector pposcore, 
+  vector pw_log_lik(vector alpha, vector beta, vector tau, vector pposcore,
 	                vector gamma, array[] row_vector X, array[] row_vector Z, array[,] int y,
 					array[] int cluster) {
     int N = size(X);
@@ -54,7 +64,7 @@ functions {
 				r  = pposcore[a]   * zeta;
 				r2 = pposcore[b+1] * zeta;
 				}
-        ll = log(1./(1. + exp(-(alpha[a-1] + eta + r))) - 1./(1. + exp(-(alpha[b] + eta + r2)))); 
+        ll = log(1./(1. + exp(-(alpha[a-1] + eta + r))) - 1./(1. + exp(-(alpha[b] + eta + r2))));
 		}
 			out[n] = ll;
     }
@@ -78,7 +88,7 @@ data {
 	vector[lpposcore] pposcore; // scores for constrained partial PO
 	int<lower = 0> Nc;  // number of clusters (0=no clustering)
 	array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;
-  
+
   real<lower = 0> conc;
 
 // priors for contrasts
