@@ -30,7 +30,7 @@ i$Contrast
 ff=tempfile()
 i <- blrm(y ~ pol(x, 2) + x2, pcontrast=pcon(c(0.1, 0.1)), file=ff)
 file.info(ff)$size
-lapply(names(i), function(n) {w <- i[[n]]; saveRDS(w, paste0(n, '.rds'))})
+# lapply(names(i), function(n) {w <- i[[n]]; saveRDS(w, paste0(n, '.rds'))})
 ff2=tempfile()
 j <- blrm(y ~ pol(x, 2) + x2, pcontrast=pcon(c(0.1, 0.1)), backend='rstan',
           file=ff2)

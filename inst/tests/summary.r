@@ -37,5 +37,5 @@ xb9 <- predict(g, d, ycut=9, cint=0)
 range(xb9 - xb5)  # no, difference is covariate-specific so this approach won't work
 
 # The following is probably riht for Prob y>=5; not sure if mean is correct
-n <- nomogram(h, fun=list(Mean=M, "Prob y>=5"=fun5))
+n <- nomogram(h5, fun=list(Mean=M, "Prob y>=5"=fun5))
 plot(n)
