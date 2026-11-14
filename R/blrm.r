@@ -199,12 +199,17 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
     Y <- Ocens2ord(Y)
     ay <- attributes(Y)
     k <- length(ay$levels)
+    # Claude Sonnet 5 2026-11-14          8 lines
+    # Ncens from is.infinite(), matching Ocens2ord's actual -Inf/Inf
+    # censoring sentinels (the previous a==1/b==k-based formula assumed
+    # a stale 1..k-only convention and silently miscounted censoring
+    # under the sentinels Ocens2ord actually returns).
     a <- Y[, 1]
     b <- Y[, 2]
     Ncens <- c(
-      left = sum(a == 1 & b > 1),
-      right = sum(b == k & a < k),
-      interval = sum(a != b & a > 1 & b < k)
+      left     = sum(is.infinite(a)),
+      right    = sum(is.infinite(b)),
+      interval = sum(is.finite(a) & is.finite(b) & a != b)
     )
   }
 
@@ -283,21 +288,53 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
   zass <- if (pppo > 0) rms::DesignAssign(zatr, 0, zTerms) ##  0? 1?
 
   ## Unconstrained PPO model does not handle censoring
-  if (k > 2 && length(ppo) && !length(cppo)) Y <- as.integer(Y[, 1])
+  if (k > 2 && length(ppo) && !length(cppo)) {
+    # Claude Sonnet 5 2026-11-14          2 lines
+    # as.integer() on a left-censored -Inf lower bound would silently
+    # become NA; fail clearly instead of corrupting the response.
+    if (sum(Ncens) > 0) {
+      stop("the unconstrained partial PO model (ppo without cppo) does not support censored Y")
+    }
+    Y <- as.integer(Y[, 1])
+  }
   ## Go to trouble of keeping list elements in order from previous
   ## version so that existing models fitted with iprior=0 will not
   ## have to be re-run
 
+  # Claude Sonnet 5 2026-11-14          entire block
+  # Precompute the per-observation intercept subscripts (ia, ia2, sgn)
+  # that drive the log-likelihood, using rms::ormIdx() -- the same
+  # Fortran routine rms::orm.fit() uses -- instead of sending the raw
+  # censored y to Stan. This removes all censoring-type conditionals
+  # from the Stan code (see the .stan files) and uses the exact same
+  # efficient mechanism orm.fit() already uses, as rmsb's future borm()
+  # will too. kalpha is the number of intercepts (one less than the
+  # number of outcome categories k). Y is a 2-column Ocens2ord matrix
+  # (uncensored rows have equal columns) unless the unconstrained-PPO-
+  # without-cppo branch above already collapsed it to a plain vector.
+  kalpha <- k - 1L
+  if (is.matrix(Y)) {
+    a   <- Y[, 1]
+    b   <- Y[, 2]
+    y0  <- a - 1L
+    y20 <- b - 1L
+    y0 [is.infinite(a)] <- -1L
+    y20[is.infinite(b)] <- kalpha + 1L
+  } else {
+    y0 <- y20 <- Y - 1L
+  }
+  idx <- rms::ormIdx(y0, y20, k = kalpha)
+
   d <- if (iprior == 0) {
     list(
       X = Xs,
-      y = Y,
+      ia = idx$ia, ia2 = idx$ia2, sgn = idx$sgn,
       N = n, p = p, k = k, conc = conc
     )
   } else {
     list(
       X = Xs,
-      y = Y,
+      ia = idx$ia, ia2 = idx$ia2, sgn = idx$sgn,
       N = n, p = p, k = k, iprior = iprior, ascale = ascale
     )
   }
@@ -405,10 +442,6 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
     }
     mod <- suppressMessages(cmdstanr::cmdstan_model(sfile, dir = rmsbdir))
   }
-
-  ## cmdstan needs a JSON method for components of data
-  ## Get around this for Ocens variable by removing its class
-  d$y <- unclass(d$y)
 
   fit.object <- list(
     call = call, fitter = fitter, link = "logistic",

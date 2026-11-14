@@ -1,72 +1,42 @@
 // For constrained partial PO model with Dirichlet prior for transformed intercepts
-//
-// Note from Claude 2026-08-30:
-// Six of seven branches confirm the formula exactly. The seventh — left-censoring — looks like a genuine bug in the uploaded Stan file, not a
-// different-but-valid convention. Left-censoring's a is structurally always 1 in that branch (Stan's condition for entering it), so pposcore[a+1] collapses
-// to the constant pposcore[2] regardless of b — but the alpha term it's paired with, alpha[b], correctly does vary with b. Every other branch pairs a
-// varying alpha index with a correspondingly varying pposcore/yde index; this is the one place that pairs a varying alpha[b] with a frozen pposcore[2]. My
-// best guess is a copy-paste artifact — the bottom-category branch legitimately uses a fixed pposcore[2] (there's only ever one relevant alpha, ia never
-// varies), and this line looks like it was adapted from that one without updating the index to track b. Worth confirming with whoever wrote it, but I'd
-// treat yde(ia(i)+1,:)/yde(ia2(i)+1,:) — applied uniformly, including to left-censoring — as the more trustworthy specification, precisely because it's the
-// one that stays internally consistent across all seven branches without a special case.
 
+// Claude Sonnet 5 2026-11-14          entire functions block
+// Likelihood rewritten to take precomputed intercept subscripts ia, ia2,
+// sgn (one triple per observation) as data instead of the raw 2-column
+// censored y.  These are computed in R by rms::ormIdx() -- the same
+// Fortran routine rms::orm.fit() uses -- from y, y2, and k, so the Stan
+// code itself no longer branches on censoring type at all: the earlier
+// uncensored/left/right/interval-censored special cases (and the
+// left-censoring pposcore[a+1] bug flagged in a prior version of this
+// file -- it froze the non-PO score at pposcore[2] regardless of the
+// censoring bound) are replaced by one formula applied uniformly.  See
+// rms::ormIdx's documentation for the exact meaning of ia/ia2/sgn: the
+// likelihood contribution is F(alpha[ia]+eta) [sgn=1] or
+// 1-F(alpha[ia]+eta) [sgn=-1] when ia2==0, or
+// F(alpha[ia]+eta) - F(alpha[ia2]+eta) when ia2>0 (sgn is always 1 in
+// that case). The non-PO score for a component at alpha index m is
+// pposcore[m+1], matching the existing (already-correct) back-scaling
+// convention elsewhere in blrm.r (e.g. `d$pposcore[-1]`).
 functions {
   // pointwise log-likelihood contributions
   vector pw_log_lik(vector alpha, vector beta, vector tau, vector pposcore,
-	                vector gamma, array[] row_vector X, array[] row_vector Z, array[,] int y,
+	                vector gamma, array[] row_vector X, array[] row_vector Z,
+					array[] int ia, array[] int ia2, vector sgn,
 					array[] int cluster) {
     int N = size(X);
-	real ll;
     vector[N] out;
-    int k = max(max(y[,1]), max(y[,2])); // assumes all possible categories are observed
-	real zeta = 0.;
-	real r = 0.;
-	real r2 = 0.;
-	real ca;
-  	real ca1;
-	int a;
-	int b;
-	int q = size(Z) > 0 ? cols(Z[1]) : 0;
+	int q  = size(Z) > 0 ? cols(Z[1]) : 0;
 	int Nc = num_elements(cluster);
     for (n in 1:N) {
     	real eta  = X[n] * beta;
 		if(Nc > 0) eta = eta + gamma[cluster[n]];
-		if(q > 0)  zeta = Z[n] * tau;
-    	a = y[n, 1];    // Y interval censored in [a,b] (uncensored if a=b)
-		b = y[n, 2];
-		if(a == 1 && b == k) ll = 0.;  // [min,max] interval censoring uninformative
-		if(a == b) {    // uncensored
-			if(q == 0) {  // PO
-  				if (a == 1)        ca  = -(alpha[1]     + eta);
-	  			else if (a == 2)   ca  =   alpha[1]     + eta;
-		  	  	else               ca  =   alpha[a - 1] + eta;
-			    if(a > 1 && a < k) ca1 =   alpha[a]     + eta;
-			}
-		else {
-  			if (a == 1)        ca  = -( alpha[1]     + eta + pposcore[2]   * zeta);
-	  		else if (a == 2)   ca  =    alpha[1]     + eta + pposcore[2]   * zeta;
-		  	else               ca  =    alpha[a - 1] + eta + pposcore[a]   * zeta;
-			if(a > 1 && a < k) ca1 =    alpha[a]     + eta + pposcore[a+1] * zeta;
-			}
-      	if (a == 1 || a == k) ll = log_inv_logit(ca);
-		else ll = log_inv_logit_diff(ca, ca1);
-		}
-		else if(b == k) {   // right censored at a
-		if(q > 0) r = pposcore[a] * zeta;
-		ll = log_inv_logit(alpha[a-1] + eta + r);
-		}
-		else if(a == 1) {   // left censored at b
-			if(q > 0) r = pposcore[a+1] * zeta;
-			ll = log_inv_logit(-(alpha[b] + eta + r));
-			}
-		else {              // a > a and b < k
-			if(q > 0) {
-				r  = pposcore[a]   * zeta;
-				r2 = pposcore[b+1] * zeta;
-				}
-        ll = log_inv_logit_diff(alpha[a-1] + eta + r, alpha[b] + eta + r2);
-		}
-			out[n] = ll;
+		real zeta = q > 0 ? Z[n] * tau : 0.;
+		real e1 = alpha[ia[n]] + eta + (q > 0 ? pposcore[ia[n] + 1] * zeta : 0.);
+		if(ia2[n] > 0) {
+			real e2 = alpha[ia2[n]] + eta + (q > 0 ? pposcore[ia2[n] + 1] * zeta : 0.);
+			out[n] = log_inv_logit_diff(e1, e2);
+		} else
+			out[n] = log_inv_logit(sgn[n] * e1);
     }
     return out;
   }
@@ -84,7 +54,11 @@ data {
 	matrix[N, q] Z;     // matrix of CENTERED PPO predictors
 	matrix[cn, p] C;    // contrasts
 	matrix[cn2, q] C2;  // non-PO contrasts
-  array[N, 2] int<lower = 1, upper = k> y; // 2-column outcome on 1 ... k
+  // Claude Sonnet 5 2026-11-14          3 lines
+  // Precomputed via rms::ormIdx() in R; see functions block comment.
+  array[N] int<lower = 1, upper = k - 1> ia;  // intercept index for p1
+  array[N] int<lower = 0, upper = k - 1> ia2; // intercept index for p2 (0 = none)
+  vector[N] sgn;                              // +1 if p1 is F(), -1 if 1-F()
 	vector[lpposcore] pposcore; // scores for constrained partial PO
 	int<lower = 0> Nc;  // number of clusters (0=no clustering)
 	array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;
@@ -122,7 +96,7 @@ transformed parameters {
   vector[Nc] gamma = Nc == 0 ? gamma_raw : sigmag[1] * gamma_raw;
   vector[N] log_lik;                                 // log-likelihood pieces
   for (j in 2:k) alpha[j - 1] = logit(sum(pi[j:k])); // predictors are CENTERED
-  log_lik = pw_log_lik(alpha, beta, tau, pposcore, gamma, Xr, Zr, y, cluster);
+  log_lik = pw_log_lik(alpha, beta, tau, pposcore, gamma, Xr, Zr, ia, ia2, sgn, cluster);
 }
 
 model {

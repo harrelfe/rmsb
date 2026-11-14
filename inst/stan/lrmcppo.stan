@@ -2,28 +2,32 @@
 // This is for the unconstrained partial PO model, which does not handle the
 // second set of contrasts for the non-PO part of the model
 
+// Claude Sonnet 5 2026-11-14          entire pw_log_lik body
+// Likelihood rewritten to take precomputed intercept subscripts ia, ia2,
+// sgn as data instead of the raw y (see lrmconppo.stan for the full
+// rationale; this model is still uncensored-only, so ia/ia2/sgn are
+// computed in R from y2=y). The non-PO tau column for a component at
+// alpha index m is tau[,m-1], valid only when m>=2 -- matching the
+// existing (already-correct) back-scaling convention elsewhere in
+// blrm.r (e.g. the `j - 2`/`mtaus[,,j-2]` loop for j in 3:k).
 functions {
   // pointwise log-likelihood contributions
   vector pw_log_lik(vector alpha, vector beta, matrix tau, vector gamma,
-	                  array[] row_vector X, array[] row_vector Z, array[] int y, array[] int cluster) {
+	                  array[] row_vector X, array[] row_vector Z,
+					  array[] int ia, array[] int ia2, vector sgn,
+					  array[] int cluster) {
     int N = size(X);
     vector[N] out;
-    int k = max(y); // assumes all possible categories are observed
 		int Nc = num_elements(cluster);
-		int j;
-		real cj;
-		real cj1;
     for (n in 1:N) {
       real eta = X[n] * beta;
 			if(Nc > 0) eta = eta + gamma[cluster[n]];
-      j = y[n];
-			if (j == 1)        cj  = -( alpha[1] + eta );
-			else if (j == 2)   cj  = alpha[1] + eta;
-			else               cj  = alpha[j - 1] + eta + Z[n] * tau[ , j - 2];
-			if(j > 1 && j < k) cj1 = alpha[j] + eta + Z[n] * tau[ , j - 1];
-
-      if (j == 1 || j == k) out[n] = log_inv_logit(cj);
-			else out[n] = log_inv_logit_diff(cj, cj1);
+			real e1 = alpha[ia[n]] + eta + (ia[n] >= 2 ? Z[n] * tau[, ia[n] - 1] : 0.);
+			if(ia2[n] > 0) {
+				real e2 = alpha[ia2[n]] + eta + (ia2[n] >= 2 ? Z[n] * tau[, ia2[n] - 1] : 0.);
+				out[n] = log_inv_logit_diff(e1, e2);
+			} else
+				out[n] = log_inv_logit(sgn[n] * e1);
     }
     return out;
   }
@@ -62,9 +66,11 @@ data {
 	matrix[N, q] Z;     // matrix of CENTERED PPO predictors
 	matrix[cn, p] C;    // contrasts
   int<lower = 2> k;   // number of outcome categories
-  // int<lower = 1, upper = k> y[N]; // outcome on 1 ... k
-  // int<lower = 1, upper = Nc> cluster[Nc == 0 ? 0 : N];  // cluster IDs
-  array[N] int<lower = 1, upper = k> y; // outcome on 1 ... k
+  // Claude Sonnet 5 2026-11-14          3 lines
+  // Precomputed via rms::ormIdx() in R; see lrmconppo.stan.
+  array[N] int<lower = 1, upper = k - 1> ia;  // intercept index for p1
+  array[N] int<lower = 0, upper = k - 1> ia2; // intercept index for p2 (0 = none)
+  vector[N] sgn;                              // +1 if p1 is F(), -1 if 1-F()
   array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;  // cluster IDs
   
   // prior standard deviations
@@ -107,7 +113,7 @@ transformed parameters {
   vector[Nc] gamma = Nc == 0 ? gamma_raw : sigmag[1] * gamma_raw;             // scaled random effects
   vector[N] log_lik;                                 // log-likelihood pieces
   for (j in 2:k) alpha[j - 1] = logit(sum(pi[j:k])); // predictors are CENTERED
-  log_lik = pw_log_lik(alpha, beta, tau, gamma, Xr, Zr, y, cluster);
+  log_lik = pw_log_lik(alpha, beta, tau, gamma, Xr, Zr, ia, ia2, sgn, cluster);
 }
 
 model {

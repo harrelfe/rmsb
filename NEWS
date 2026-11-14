@@ -15,6 +15,31 @@ Changes for 1.2-0 (2026-11-14)
   * Cleanup: remove the three commented-out log_diff_exp/log1p_exp dead-
     code alternatives in lrmcppo.stan that had anticipated this fix but
     were never wired in.
+  * blrm: Stan code (lrmconppo.stan, lrmconppot.stan, lrmcppo.stan) now
+    takes precomputed per-observation intercept subscripts (ia, ia2,
+    sgn) as data, from the new rms::ormIdx() wrapper around the same
+    Fortran ormidx routine rms::orm.fit() already uses, instead of the
+    raw censored y. Removes every censoring-type conditional from the
+    Stan likelihood; the Stan code is otherwise unchanged and no score/
+    Hessian is computed, matching the design rms::orm.fit() already
+    uses and that the future rmsb::borm() will reuse.
+  * blrm: fixes two bugs this exposed/removed as a side effect of the
+    above. (1) Censoring: blrm's own Ncens counts and the data it sent
+    to Stan assumed a stale 1..k integer-only y convention that no
+    longer matches Ocens2ord()'s actual -Inf/Inf censoring sentinels,
+    so censored fits were silently broken; blrm now converts to the
+    exact -1/k+1 sentinel convention rms::orm.fit() uses before calling
+    ormIdx(). (2) cppo: the old lrmconppo.stan/lrmconppot.stan
+    left-censoring branch applied a frozen pposcore[2] non-PO score
+    regardless of the censoring bound, instead of varying with it like
+    every other branch; the new unified ia/ia2-indexed formula applies
+    pposcore[ia+1] uniformly, eliminating that branch-specific bug by
+    construction.
+  * blrm: the unconstrained PPO model (ppo without cppo) still does not
+    support censored Y, but now fails with an informative error instead
+    of silently corrupting the response via as.integer(-Inf) = NA.
+  * DESCRIPTION: bumped required rms version to >= 8.2-2, which exports
+    ormIdx().
 
 Changes for 1.1-3 (2026-10-29)
    * blrm: added sampling.args to hash digest

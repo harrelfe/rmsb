@@ -1,63 +1,30 @@
 // For constrained partial PO model with t distribution for priors on intercepts
 
+// Claude Sonnet 5 2026-11-14          entire functions block
+// Likelihood rewritten to take precomputed intercept subscripts ia, ia2,
+// sgn as data instead of the raw 2-column censored y; see lrmconppo.stan
+// for the full rationale. alpha here is negated throughout (unchanged
+// from before) because it is declared as a Stan `ordered` vector.
 functions {
   // pointwise log-likelihood contributions
-  vector pw_log_lik(vector alpha, vector beta, vector tau, vector pposcore, 
+  vector pw_log_lik(vector alpha, vector beta, vector tau, vector pposcore,
 	                  vector gamma, array[] row_vector X, array[] row_vector Z,
-										array[,] int y, array[] int cluster) {
+										array[] int ia, array[] int ia2, vector sgn,
+										array[] int cluster) {
     int N = size(X);
-		real ll;
     vector[N] out;
-    int k = max(max(y[,1]), max(y[,2])); // assumes all possible categories are observed
-		real zeta = 0.;
-		real r = 0.;
-		real r2 = 0.;
-		real ca;
-  	real ca1;
-		int a;
-		int b;
-		int q = size(Z) > 0 ? cols(Z[1]) : 0;
+		int q  = size(Z) > 0 ? cols(Z[1]) : 0;
 		int Nc = num_elements(cluster);
     for (n in 1:N) {
       real eta  = X[n] * beta;
 			if(Nc > 0) eta = eta + gamma[cluster[n]];
-			if(q > 0)  zeta = Z[n] * tau;
-      a = y[n, 1];    // Y interval censored in [a,b] (uncensored if a=b)
-			b = y[n, 2];
-			if(a == 1 && b == k) ll = 0.;  // [min,max] interval censoring uninformative
-			if(a == b) {    // uncensored
-			  if(q == 0) {  // PO
-			// alpha is negated so can used Stan ordered vector
-  			  if (a == 1)        ca  = -(- alpha[1]     + eta);
-	  		  else if (a == 2)   ca  =   - alpha[1]     + eta;
-		  	  else               ca  =   - alpha[a - 1] + eta;
-			    if(a > 1 && a < k) ca1 =   - alpha[a]     + eta;
-				}
-				else {
-  			  if (a == 1)        ca  = -( - alpha[1]     + eta + pposcore[2]   * zeta);
-	  		  else if (a == 2)   ca  =    - alpha[1]     + eta + pposcore[2]   * zeta;
-		  	  else               ca  =    - alpha[a - 1] + eta + pposcore[a]   * zeta;
-			    if(a > 1 && a < k) ca1 =    - alpha[a]     + eta + pposcore[a+1] * zeta;
-				}
-      if (a == 1 || a == k) ll = log_inv_logit(ca);
-			else ll = log_inv_logit_diff(ca, ca1);
-		  }
-			else if(b == k) {   // right censored at a
-			  if(q > 0) r = pposcore[a] * zeta;
-				ll = log_inv_logit(- alpha[a-1] + eta + r);
-			}
-			else if(a == 1) {   // left censored at b
-			  if(q > 0) r = pposcore[a+1] * zeta;
-				ll = log_inv_logit(-(- alpha[b] + eta + r));
-			}
-			else {              // a > a and b < k
-			  if(q > 0) {
-				  r  = pposcore[a]   * zeta;
-					r2 = pposcore[b+1] * zeta;
-					}
-        ll = log_inv_logit_diff(- alpha[a-1] + eta + r, - alpha[b] + eta + r2);
-				}
-			out[n] = ll;
+			real zeta = q > 0 ? Z[n] * tau : 0.;
+			real e1 = - alpha[ia[n]] + eta + (q > 0 ? pposcore[ia[n] + 1] * zeta : 0.);
+			if(ia2[n] > 0) {
+				real e2 = - alpha[ia2[n]] + eta + (q > 0 ? pposcore[ia2[n] + 1] * zeta : 0.);
+				out[n] = log_inv_logit_diff(e1, e2);
+			} else
+				out[n] = log_inv_logit(sgn[n] * e1);
     }
     return out;
   }
@@ -75,11 +42,15 @@ data {
 	matrix[N, q] Z;     // matrix of CENTERED PPO predictors
 	matrix[cn, p] C;    // contrasts
 	matrix[cn2, q] C2;  // non-PO contrasts corresponding to Z
-  array[N, 2] int<lower = 1, upper = k> y; // 2-column outcome on 1 ... k
+  // Claude Sonnet 5 2026-11-14          3 lines
+  // Precomputed via rms::ormIdx() in R; see lrmconppo.stan.
+  array[N] int<lower = 1, upper = k - 1> ia;  // intercept index for p1
+  array[N] int<lower = 0, upper = k - 1> ia2; // intercept index for p2 (0 = none)
+  vector[N] sgn;                              // +1 if p1 is F(), -1 if 1-F()
 	vector[lpposcore] pposcore; // scores for constrained partial PO
 	int<lower = 0> Nc;  // number of clusters (0=no clustering)
 	array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;
-  
+
 	int<lower = 1, upper = 2> iprior; // 1=flat 2=t(3, 0, ascale)
 	real<lower = 0.01> ascale;
 
@@ -112,7 +83,7 @@ parameters {
 transformed parameters {
   vector[Nc] gamma = Nc == 0 ? gamma_raw : sigmag[1] * gamma_raw;
   vector[N] log_lik;                                 // log-likelihood pieces
-  log_lik = pw_log_lik(alpha, beta, tau, pposcore, gamma, Xr, Zr, y, cluster);
+  log_lik = pw_log_lik(alpha, beta, tau, pposcore, gamma, Xr, Zr, ia, ia2, sgn, cluster);
 }
 
 model {
