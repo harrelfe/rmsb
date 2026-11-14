@@ -49,6 +49,7 @@ Changes for 1.2-0 (2026-11-14)
     tail category. print.blrm now displays Ncens1, matching print.orm().
     This replaces the fit object's Ncens field -- not backward compatible
     with fits saved before this change.
+  * ormcon.stan: new Stan code for to-be-written borm function; implements all 5 link functions, numerically accurate calculations, two types of random effects
 
 Changes for 1.1-3 (2026-10-29)
    * blrm: added sampling.args to hash digest
