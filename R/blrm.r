@@ -189,7 +189,10 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
   Y <- model.extract(X, "response")
   ## model.extract (which calls model.response) not keeping class
   isOcens <- inherits(Y, "Ocens") || NCOL(Y) == 2
-  Ncens <- c(left = 0, right = 0, interval = 0)
+  # Claude Sonnet 5 2026-11-14          2 lines
+  # Matches rms::orm.fit()'s own default for a non-Ocens response.
+  zero3 <- c(left = 0L, right = 0L, interval = 0L)
+  Ncens1 <- Ncens2 <- zero3
 
   if (!isOcens) {
     Y <- Ocens2ord(Ocens(Y))
@@ -199,18 +202,17 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
     Y <- Ocens2ord(Y)
     ay <- attributes(Y)
     k <- length(ay$levels)
-    # Claude Sonnet 5 2026-11-14          8 lines
-    # Ncens from is.infinite(), matching Ocens2ord's actual -Inf/Inf
-    # censoring sentinels (the previous a==1/b==k-based formula assumed
-    # a stale 1..k-only convention and silently miscounted censoring
-    # under the sentinels Ocens2ord actually returns).
-    a <- Y[, 1]
-    b <- Y[, 2]
-    Ncens <- c(
-      left     = sum(is.infinite(a)),
-      right    = sum(is.infinite(b)),
-      interval = sum(is.finite(a) & is.finite(b) & a != b)
-    )
+    # Claude Sonnet 5 2026-11-14          6 lines
+    # Ncens1/Ncens2 are Ocens2ord's own attributes -- original vs.
+    # post-coding censoring counts, matching rms::orm.fit() exactly.
+    # The two differ when right-censored points at/beyond the highest
+    # uncensored value are reclassified as uncensored at a new tail
+    # category; recomputing counts from is.infinite() on Ocens2ord's
+    # output (the previous approach) silently matched Ncens2, not
+    # Ncens1, in that case. Attributes are absent only when Ocens2ord
+    # hit its no-censoring fast path, where zero3 is already correct.
+    if (length(ay$Ncens1)) Ncens1 <- ay$Ncens1
+    if (length(ay$Ncens2)) Ncens2 <- ay$Ncens2
   }
 
   offs <- atrx$offset
@@ -292,7 +294,7 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
     # Claude Sonnet 5 2026-11-14          2 lines
     # as.integer() on a left-censored -Inf lower bound would silently
     # become NA; fail clearly instead of corrupting the response.
-    if (sum(Ncens) > 0) {
+    if (sum(Ncens1) > 0) {
       stop("the unconstrained partial PO model (ppo without cppo) does not support censored Y")
     }
     Y <- as.integer(Y[, 1])
@@ -847,7 +849,7 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
       param = param,
       psigma = psigma, rsdmean = rsdmean, rsdsd = rsdsd, iprior = iprior,
       xqrsd = xqrsd,
-      N = n, Ncens = Ncens, p = p,
+      N = n, Ncens1 = Ncens1, Ncens2 = Ncens2, p = p,
       alphas = al, betas = be, taus = ta, tauInfo = tauInfo,
       xbar = xbar, zbar = zbar, Design = atr, zDesign = zatr,
       scale.pred = c("log odds", "Odds Ratio"),
@@ -1157,7 +1159,10 @@ print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
     p_loo <- lo[2]
     looic <- lo[3]
   }
-  Ncens <- x$Ncens
+  # Claude Sonnet 5 2026-11-14          1 line
+  # Matches print.orm(), which displays Ncens1 (original counts), not
+  # Ncens2 (post-coding counts after tail-category reclassification).
+  Ncens <- x$Ncens1
   L <- if (Ncens[1] > 0) paste0("L=", Ncens[1])
   R <- if (Ncens[2] > 0) paste0("R=", Ncens[2])
   int <- if (Ncens[3] > 0) paste0("I=", Ncens[3])
