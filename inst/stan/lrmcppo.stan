@@ -23,10 +23,7 @@ functions {
 			if(j > 1 && j < k) cj1 = alpha[j] + eta + Z[n] * tau[ , j - 1];
 
       if (j == 1 || j == k) out[n] = log_inv_logit(cj);
-			else out[n] = log(1./(1. + exp(-cj)) - 1./(1. + exp(-cj1)));
-//      else out[n] = log_diff_exp(-log1p_exp(- cj),
-//                                 -log1p_exp(- cj1));
-//			else out[n] = log(-log1p_exp(-cj) + log1p_exp(-cj1));
+			else out[n] = log_inv_logit_diff(cj, cj1);
     }
     return out;
   }
@@ -49,10 +46,7 @@ functions {
 			  if(j > 1 && j < k) cj1 = alpha[j] + eta + Z[n] * tau[ , j - 1];
 
 				if (j == 1 || j == k) out[n, j] = log_inv_logit(cj);
-				else out[n, j] = log(1./(1. + exp(-cj)) - 1./(1. + exp(-cj1)));
-//				else  out[n, j] = log_diff_exp(-log1p_exp(-cj),
-//                                   -log1p_exp(-cj1));
-//				else out[n, j] = log(-log1p_exp(-cj) + log1p_exp(-cj1));
+				else out[n, j] = log_inv_logit_diff(cj, cj1);
 			}
     }
     return exp(out);

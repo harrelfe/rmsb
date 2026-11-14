@@ -49,7 +49,7 @@ functions {
 			if(a > 1 && a < k) ca1 =    alpha[a]     + eta + pposcore[a+1] * zeta;
 			}
       	if (a == 1 || a == k) ll = log_inv_logit(ca);
-		else ll = log(1./(1. + exp(-ca)) - 1./(1. + exp(-ca1)));
+		else ll = log_inv_logit_diff(ca, ca1);
 		}
 		else if(b == k) {   // right censored at a
 		if(q > 0) r = pposcore[a] * zeta;
@@ -64,7 +64,7 @@ functions {
 				r  = pposcore[a]   * zeta;
 				r2 = pposcore[b+1] * zeta;
 				}
-        ll = log(1./(1. + exp(-(alpha[a-1] + eta + r))) - 1./(1. + exp(-(alpha[b] + eta + r2))));
+        ll = log_inv_logit_diff(alpha[a-1] + eta + r, alpha[b] + eta + r2);
 		}
 			out[n] = ll;
     }

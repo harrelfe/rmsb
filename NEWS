@@ -1,4 +1,22 @@
-Changes for 1.1-3 (2026-09-03)
+Changes for 1.2-0 (2026-11-14)
+  * Stan: use built-in log_inv_logit_diff for stable interior log-likelihood
+  * Accuracy: replace log(inv_logit(ca) - inv_logit(ca1)) with Stan's
+    built-in log_inv_logit_diff(ca, ca1) at every uncensored-interior and
+    interval-censored log-likelihood term in lrmconppo.stan,
+    lrmconppot.stan, and lrmcppo.stan (pw_log_lik and Pr). Avoids
+    catastrophic cancellation when both cutpoints are deep in the same
+    tail (large |eta| or many intercepts); naive formula returned NaN on
+    14% of a 198-point test grid and up to 2.3% relative error where
+    finite, vs ~1e-15 (machine epsilon) for the built-in, measured against
+    an arbitrary-precision (Decimal) reference. Verified blrm(optimizing)
+    matches rms::orm MLEs and -2LL on simulated data (k=4 and k=9
+    categories, with and without cppo), and a short NUTS run completes
+    without error.
+  * Cleanup: remove the three commented-out log_diff_exp/log1p_exp dead-
+    code alternatives in lrmcppo.stan that had anticipated this fix but
+    were never wired in.
+
+Changes for 1.1-3 (2026-10-29)
    * blrm: added sampling.args to hash digest
    * print.blrm: changed to use new version of prModFit in rms
    * print.rmsb: fixed old bug related to rownames being lost with drop=TRUE which surfaced with one predictor and intercepts=FALSE
