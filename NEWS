@@ -144,6 +144,7 @@ Changes for 1.2-0 (2026-11-15)
     OK (two environment-only INFO notes: the mice suggested package
     being unavailable to check with, and GNU make being a
     SystemRequirements -- neither related to this work).
+  * borm-blrm.r, borm-orm.r: new tests in inst/tests
 
 Changes for 1.1-3 (2026-10-29)
    * blrm: added sampling.args to hash digest
