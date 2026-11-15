@@ -460,70 +460,17 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
 
   fo <- fit.object
 
-  docon <- function(fo, X, wqr, pc, main) {
-    nint <- length(ylev) - 1
-    fo$coefficients <- rep(0., nint + ncol(X))
-    fo$tau <- rep(0., pppo)
-    fo$draws <- 1L # trick predictrms into bayes=TRUE
-    fo$param <- rbind(
-      mean = rep(0., nint + ncol(X) + pppo * main),
-      median = rep(0., nint + ncol(X) + pppo * main)
-    )
-    class(fo) <- c("blrm", "rmsb", "rms")
-    weights <- pc$weights
-    if (!length(weights)) weights <- "equal"
-    expand <- pc$expand
-    if (!length(expand)) expand <- TRUE
-    cmus <- pc$mu
-    csds <- pc$sd
-    con <- pc$contrast
-    if (!length(con)) stop("must include contrast in pcontrast")
-    if (!is.expression(con)) stop("contrast must be expression()")
-    pc[c("weights", "expand", "mu", "sd", "contrast", "ycut")] <- NULL
-    cnam <- names(pc)
-    if (!length(cnam) || any(cnam == "")) {
-      stop("predictor setting lists in pcontrast must be named")
-    }
-    ## Compute design matrices to be used in contrasts
-    XC <- lapply(
-      pc,
-      function(x) {
-        do.call(
-          Xcontrast, # Xcontrast is in rms
-          list(fo,
-            a = x, weights = weights,
-            expand = expand, Zmatrix = FALSE
-          )
-        )
-      }
-    )
-
-    ## Over expressions in contrasts evaluate them in XC
-    Contrast <- do.call(rbind, lapply(con, eval, XC))
-    cn <- nrow(Contrast)
-    if (!length(cmus)) cmus <- 0.
-    if (!length(csds)) csds <- 100.
-    if (length(cmus) == 1) cmus <- rep(cmus, length = cn)
-    if (length(csds) == 1) csds <- rep(csds, length = cn)
-    if (length(cmus) != cn || length(csds) != cn) {
-      stop(
-        "mismatch between number of contrasts (", cn,
-        "), length of mu (", length(cmus),
-        ") and length of sd (", length(csds), ")"
-      )
-    }
-    Contrastt <- Contrast %*% wqr$Rinv # QR-transformed contrasts
-    d$C <- as.array(Contrastt)
-    d$cmus <- as.array(cmus)
-    d$csds <- as.array(csds)
-    list(
-      cn = cn, Contrast = Contrast, C = as.array(Contrastt),
-      cmus = as.array(cmus), csds = as.array(csds)
-    )
-  }
+  # Claude Sonnet 5 2026-11-19          1 line
+  # docon() (the pcontrast/npcontrast design-matrix-and-prior builder)
+  # is now a shared top-level function in stanMisc.r, used by borm()
+  # too -- see its own documentation there for why (CLAUDE.md: a helper
+  # needed in more than one file must not live inside a single
+  # function body). ylev/pppo were previously captured from this
+  # function's own local scope; now passed explicitly.
 
   if (length(pcontrast)) {
-    w <- docon(fo, X, wqrX, pcontrast, main = TRUE)
+    w <- docon(fo, X, wqrX, pcontrast, main = TRUE, ylev = ylev, pppo = pppo,
+               clas = c("blrm", "rmsb", "rms"))
     fit.object$Contrast <- w$Contrast
     fit.object$Contrastt <- w$Contrastt
     d$cn <- w$cn
@@ -537,7 +484,8 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
     fo$terms <- zTerms
     fo$assign <- zass
     fo$sformula <- zsformula
-    w <- docon(fo, Z, wqrZ, npcontrast, main = FALSE)
+    w <- docon(fo, Z, wqrZ, npcontrast, main = FALSE, ylev = ylev, pppo = pppo,
+               clas = c("blrm", "rmsb", "rms"))
     fit.object$nContrast <- w$Contrast
     fit.object$nContrastt <- w$Contrastt
     d$cn2 <- w$cn
