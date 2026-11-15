@@ -74,12 +74,18 @@
 // component formula via a 0/1 indicator vector (has2) and arithmetic
 // blending instead -- Stan has no elementwise ternary on a vector
 // condition (confirmed directly: stanc rejects it, requiring a scalar
-// int). Both the intercept index (ia2_safe) AND the resulting value
-// (e2) fed to the unused branch have to be clamped to something valid
-// on every row, not just ia2_safe: the unused branch's own domain
-// violation (e1 > e2 not holding) produces -Inf/NaN that 0 .* (...)
-// does NOT zero out in IEEE arithmetic (confirmed directly: 0*(-Inf)
-// is NaN, not 0) -- see pw_log_lik_logistic's own comment for the fix.
+// int). The intercept index (ia2_safe) is NOT enough by itself to
+// make the unused branch safe: the VALUES fed to the two-component
+// formula on an unused (has2 == 0) row must themselves be a FIXED
+// dummy pair, not one derived from the real e1 (even one that merely
+// satisfies e1 > e2) -- see pw_log_lik_logistic's own comment, which
+// has the full account of why (0 .* non-finite = NaN in IEEE
+// arithmetic, and a value derived from e1 can turn out non-finite in
+// more than one way, including ways that are not at all extreme for
+// a fast-saturating family like cloglog). loglog/cloglog have a
+// second, distinct instance of the same hazard, in their own
+// CDF-vs-CCDF selection by sgn rather than in has2 -- see
+// pw_log_lik_loglog's own comment for that one.
 // probit and cauchit are NOT vectorized this way: their
 // numerically-stable forms are std_normal_lcdf/cauchy_lcdf, which
 // only exist in the summing form, so there is no accuracy-preserving
@@ -105,25 +111,57 @@ functions {
   // both of their ordinary CDFs, are exact closed forms (one exp()
   // each, or one log1m_exp() of an already-negative argument), so no
   // cancellation is possible in any of the four.
+  //
+  // Claude Sonnet 5 2026-11-18          entire comment
+  // A third, more severe hazard, found auditing this file and
+  // confirmed directly with a minimal reproduction: unlike
+  // log_inv_logit/std_normal_lcdf/cauchy_lcdf (Stan built-ins, which
+  // never call exp() on an argument large enough to overflow -- the
+  // same design std_normal_lcdf/cauchy_lcdf use for probit/cauchit's
+  // OWN tail stability), loglog/cloglog's exact closed forms call
+  // exp() directly and unconditionally. exp()'s argument overflows
+  // (becomes +Inf, not NaN) past about 709.78 in double precision; the
+  // FORWARD value this produces is still a correct, finite-looking
+  // result after log1m_exp() or the unary minus (confirmed directly:
+  // logCDF_cloglog(1000) correctly evaluates to 0, logCCDF_cloglog(1000)
+  // correctly evaluates to -Inf, neither one a crash on its own). But
+  // Stan's REVERSE-MODE AUTODIFF through that overflowed exp() node is
+  // not merely inaccurate here -- it SEGFAULTS: confirmed directly with
+  // a 4-line standalone model (just `target += -exp(400*beta)`,
+  // optimizing() from beta=400) reproducibly crashing with a bus error/
+  // segfault, a fatal, uncatchable OS signal exactly like the
+  // Matrix::solve native crash documented in CLAUDE.md's rms lessons,
+  // and confirmed the identical minimal model does NOT crash once the
+  // argument to exp() is capped below the overflow threshold. The same
+  // reproduction confirmed the mirror-image hazard in logCDF_loglog's
+  // own exp(-x) call. Fixed by capping the argument actually passed to
+  // exp() at 700 (comfortably below the ~709.78 overflow point, with
+  // no effect on any non-pathological input: a log-probability that
+  // has already saturated to -1e300-or-beyond-magnitude is
+  // indistinguishable from true -Inf for any purpose Stan or borm make
+  // of it) -- NOT by changing what these functions are mathematically
+  // intended to compute, only by keeping the one risky intermediate
+  // operation inside exp()'s safe range, the same principle Stan's own
+  // log1p_exp/log1m_exp already apply to avoid this exact failure mode.
   real logCDF_logistic (real x) { return log_inv_logit(x); }
   real logCCDF_logistic(real x) { return log_inv_logit(-x); }
   real logCDF_probit   (real x) { return std_normal_lcdf(x); }
   real logCCDF_probit  (real x) { return std_normal_lcdf(-x); }
   real logCDF_cauchit  (real x) { return cauchy_lcdf(x | 0, 1); }
   real logCCDF_cauchit (real x) { return cauchy_lcdf(-x | 0, 1); }
-  real logCDF_loglog   (real x) { return -exp(-x); }               // exact
-  real logCCDF_loglog  (real x) { return log1m_exp(-exp(-x)); }
-  real logCDF_cloglog  (real x) { return log1m_exp(-exp(x)); }
-  real logCCDF_cloglog (real x) { return -exp(x); }                // exact
+  real logCDF_loglog   (real x) { return -exp(fmin(-x, 700.)); }
+  real logCCDF_loglog  (real x) { return log1m_exp(-exp(fmin(-x, 700.))); }
+  real logCDF_cloglog  (real x) { return log1m_exp(-exp(fmin(x, 700.))); }
+  real logCCDF_cloglog (real x) { return -exp(fmin(x, 700.)); }
   // Claude Sonnet 5 2026-11-17          4 lines
   // Vector overloads (same formulas, built entirely from elementwise-
   // vectorized primitives) so pw_log_lik_loglog/cloglog below can be
   // fully vectorized -- see the file header note on why this isn't
   // done for probit/cauchit.
-  vector logCDF_loglog   (vector x) { return -exp(-x); }
-  vector logCCDF_loglog  (vector x) { return log1m_exp(-exp(-x)); }
-  vector logCDF_cloglog  (vector x) { return log1m_exp(-exp(x)); }
-  vector logCCDF_cloglog (vector x) { return -exp(x); }
+  vector logCDF_loglog   (vector x) { return -exp(fmin(-x, 700.)); }
+  vector logCCDF_loglog  (vector x) { return log1m_exp(-exp(fmin(-x, 700.))); }
+  vector logCDF_cloglog  (vector x) { return log1m_exp(-exp(fmin(x, 700.))); }
+  vector logCCDF_cloglog (vector x) { return -exp(fmin(x, 700.)); }
 
   // ---- logistic/loglog/cloglog: fully vectorized, no loop at all ----
   // e is the same quantity (lp + lp2 + random-effect contribution) for
@@ -138,22 +176,41 @@ functions {
   // Both ia2_safe and has2 are precomputed once in transformed data,
   // not here, since this function runs once per log_prob evaluation.
   //
-  // Claude Sonnet 5 2026-11-17          3 lines
-  // e2 (not just ia2_safe) must itself be clamped, to e1 - 1, whenever
-  // has2 == 0: alpha[ia2_safe]+e is a real but ARBITRARY value there
-  // (the dummy index 1 has no relation to ia[n]), so log_inv_logit_diff/
-  // log_diff_exp's required e1 > e2 need not hold on an unused row --
-  // confirmed directly: a stray unused-row violation gives -Inf or NaN,
-  // and 0 .* that is itself NaN in IEEE arithmetic (0 * Inf = NaN), not
-  // 0, silently corrupting every row near it despite has2 being 0.
-  // e1 - 1 guarantees e1 > e2 on every row regardless of has2, with no
-  // ternary needed (has2 blends it away exactly where it doesn't apply).
+  // Claude Sonnet 5 2026-11-18          entire comment
+  // A THIRD distinct instance of the 0 .* non-finite = NaN hazard,
+  // found auditing this file -- and the most practically dangerous of
+  // the three, since it is triggered by perfectly ordinary eta values,
+  // not an artificial stress test. An earlier version of this fix
+  // clamped only e2's VALUE, to e1 - 1, to satisfy log_inv_logit_diff/
+  // log_diff_exp's x > y domain requirement on unused (has2 == 0)
+  // rows. That is necessary but not sufficient: for a sufficiently
+  // large real e1 -- "sufficiently large" meaning as little as ~8-9
+  // for cloglog specifically, because its CDF saturates to 1 doubly-
+  // exponentially fast, not an extreme or pathological value -- both
+  // F(e1) and F(e1 - 1) round to the SAME value in double precision,
+  // making log_diff_exp(e1, e1-1) legitimately -Inf even though
+  // e1 > e1-1 is satisfied; has2 == 0 still multiplies that -Inf by 0,
+  // giving NaN again. Confirmed directly: bisecting a realistic
+  // (non-stress-test) cloglog fit found log_lik going to NaN at
+  // max(X*beta) between 7.1 (fine) and 8.9 (NaN), far below any
+  // overflow threshold, tracked to exactly this mechanism via
+  // constrain_pars() on the specific offending row. Fixed by feeding a
+  // FIXED, always-finite dummy pair (0, -1) to the two-component
+  // formula on unused rows -- not derived from the real e1 at all, so
+  // it cannot saturate regardless of how large or small e1 is -- verified
+  // via a standalone reproduction before reapplying here, and reusing
+  // the identical dummy-input principle already used for the sign-
+  // selection fix just below (feed something that provably cannot be
+  // non-finite to the branch that will be multiplied by zero, rather
+  // than trying to bound how extreme the real data can make it).
   vector pw_log_lik_logistic(vector alpha, vector lp, vector lp2, vector gamma_eta,
                              array[] int ia, array[] int ia2_safe, vector has2, vector sgn) {
     vector[num_elements(lp)] e  = lp + lp2 + gamma_eta;
     vector[num_elements(lp)] e1 = alpha[ia] + e;
-    vector[num_elements(lp)] e2 = has2 .* (alpha[ia2_safe] + e) + (1 - has2) .* (e1 - 1);
-    return has2 .* log_inv_logit_diff(e1, e2) + (1 - has2) .* log_inv_logit(sgn .* e1);
+    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e;
+    vector[num_elements(lp)] e1_two = has2 .* e1     + (1 - has2) .* 0.;
+    vector[num_elements(lp)] e2_two = has2 .* e2_raw + (1 - has2) .* (-1.);
+    return has2 .* log_inv_logit_diff(e1_two, e2_two) + (1 - has2) .* log_inv_logit(sgn .* e1);
   }
 
   vector pw_log_lik_probit(vector alpha, vector lp, vector lp2, vector gamma_eta,
@@ -169,28 +226,55 @@ functions {
     return out;
   }
 
+  // Claude Sonnet 5 2026-11-18          entire comment
+  // A second distinct instance of the 0 .* non-finite = NaN hazard,
+  // in the sign (CDF-vs-CCDF) selection rather than the has2
+  // selection: logCDF_loglog(x) = -exp(-x) and logCCDF_loglog(x) are
+  // BOTH evaluated at the same e1 below, then blended via
+  // indF/(1-indF); if the unused one is non-finite, 0 .* it is NaN.
+  // Confirmed directly: indF=0 (CCDF wanted, itself finite ~0) with
+  // e1 = -800 gave NaN before this fix, from the discarded
+  // logCDF_loglog(-800) = -Inf term. Fixed the same way as has2 below:
+  // feed a safe dummy (0) -- verified finite for both logCDF_loglog
+  // and logCCDF_loglog at x=0 -- to whichever of CDF/CCDF is NOT
+  // selected by indF, instead of the real (possibly extreme) e1.
+  // cloglog has the mirror-image hazard on logCCDF_cloglog(x) =
+  // -exp(x) (overflows for large positive x instead), fixed
+  // identically; x=0 is finite for it too.
   vector pw_log_lik_loglog(vector alpha, vector lp, vector lp2, vector gamma_eta,
                            array[] int ia, array[] int ia2_safe, vector has2, vector sgn) {
     vector[num_elements(lp)] e  = lp + lp2 + gamma_eta;
     vector[num_elements(lp)] e1 = alpha[ia] + e;
-    // See pw_log_lik_logistic for why e2 itself (not just ia2_safe)
-    // must be clamped on unused (has2 == 0) rows.
-    vector[num_elements(lp)] e2 = has2 .* (alpha[ia2_safe] + e) + (1 - has2) .* (e1 - 1);
+    // See the comment above pw_log_lik_logistic for why a FIXED dummy
+    // pair (not one derived from e1) is needed here, not just an
+    // ordering fix: logCDF_loglog saturates to the same double-
+    // precision value at both e1 and e1-1 once e1 is only moderately
+    // negative, which would make log_diff_exp(e1, e1-1) legitimately
+    // -Inf on an unused row despite e1 > e1-1 holding.
+    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e;
+    vector[num_elements(lp)] e1_two = has2 .* e1     + (1 - has2) .* 0.;
+    vector[num_elements(lp)] e2_two = has2 .* e2_raw + (1 - has2) .* (-1.);
     // sgn > 0 selects logCDF vs. logCCDF elementwise; sgn is +-1, so
     // (1+sgn)/2 is a 0/1 indicator without needing a comparison.
-    vector[num_elements(lp)] indF = (1 + sgn) / 2;
-    return has2 .* log_diff_exp(logCDF_loglog(e1), logCDF_loglog(e2))
-         + (1 - has2) .* (indF .* logCDF_loglog(e1) + (1 - indF) .* logCCDF_loglog(e1));
+    vector[num_elements(lp)] indF    = (1 + sgn) / 2;
+    vector[num_elements(lp)] e1_cdf  = indF .* e1;        // 0 (safe) when CCDF is wanted instead
+    vector[num_elements(lp)] e1_ccdf = (1 - indF) .* e1;  // 0 (safe) when CDF is wanted instead
+    return has2 .* log_diff_exp(logCDF_loglog(e1_two), logCDF_loglog(e2_two))
+         + (1 - has2) .* (indF .* logCDF_loglog(e1_cdf) + (1 - indF) .* logCCDF_loglog(e1_ccdf));
   }
 
   vector pw_log_lik_cloglog(vector alpha, vector lp, vector lp2, vector gamma_eta,
                             array[] int ia, array[] int ia2_safe, vector has2, vector sgn) {
     vector[num_elements(lp)] e  = lp + lp2 + gamma_eta;
     vector[num_elements(lp)] e1 = alpha[ia] + e;
-    vector[num_elements(lp)] e2 = has2 .* (alpha[ia2_safe] + e) + (1 - has2) .* (e1 - 1);
-    vector[num_elements(lp)] indF = (1 + sgn) / 2;
-    return has2 .* log_diff_exp(logCDF_cloglog(e1), logCDF_cloglog(e2))
-         + (1 - has2) .* (indF .* logCDF_cloglog(e1) + (1 - indF) .* logCCDF_cloglog(e1));
+    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e;
+    vector[num_elements(lp)] e1_two = has2 .* e1     + (1 - has2) .* 0.;
+    vector[num_elements(lp)] e2_two = has2 .* e2_raw + (1 - has2) .* (-1.);
+    vector[num_elements(lp)] indF    = (1 + sgn) / 2;
+    vector[num_elements(lp)] e1_cdf  = indF .* e1;
+    vector[num_elements(lp)] e1_ccdf = (1 - indF) .* e1;
+    return has2 .* log_diff_exp(logCDF_cloglog(e1_two), logCDF_cloglog(e2_two))
+         + (1 - has2) .* (indF .* logCDF_cloglog(e1_cdf) + (1 - indF) .* logCCDF_cloglog(e1_ccdf));
   }
 
   vector pw_log_lik_cauchit(vector alpha, vector lp, vector lp2, vector gamma_eta,
@@ -227,7 +311,15 @@ data {
   int<lower = 1> p;                 // number of predictors
   int<lower = 2> k;                 // number of outcome categories
   int<lower = 1, upper = 5> link;   // 1=logistic 2=probit 3=loglog 4=cloglog 5=cauchit
-  matrix[N, p] X;                   // matrix of CENTERED predictors
+  // Claude Sonnet 5 2026-11-19          2 lines
+  // X is CENTERED *and* QR-orthogonalized by R (rmsb's selectedQr(),
+  // the same mechanism blrm() uses) before being passed here -- this
+  // Stan code has no knowledge of either transformation; it simply
+  // fits beta on whatever scale X already arrives in. beta is back-
+  // transformed to the original covariate scale afterward, in R, via
+  // the stored QR R-matrix (see borm()'s own documentation for the
+  // exact mechanism, shared verbatim with blrm()).
+  matrix[N, p] X;                   // matrix of CENTERED, QR-orthogonalized predictors (done in R)
   vector[N] lp2;                    // placeholder for future ydep contribution; 0 for now
   // Precomputed via rms::ormIdx() in R; see lrmconppo.stan.
   array[N] int<lower = 1, upper = k - 1> ia;  // intercept index for p1
@@ -235,6 +327,14 @@ data {
   vector[N] sgn;                              // +1 if p1 is F(), -1 if 1-F()
 
   real<lower = 0> conc;              // Dirichlet concentration parameter for intercepts
+
+  // Claude Sonnet 5 2026-11-19          2 lines
+  // pcontrast: Gaussian priors on user-specified contrasts of beta, in
+  // QR-transformed contrast space -- same mechanism as blrm's C/cmus/csds.
+  int<lower = 0> cn;                 // number of contrasts needing priors
+  matrix[cn, p] C;                   // contrasts (already QR-transformed)
+  vector[cn] cmus;
+  vector[cn] csds;
 
   int<lower = 0> Nc;                  // number of clusters (0 = no clustering)
   array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;
@@ -284,6 +384,19 @@ parameters {
 transformed parameters {
   vector[k - 1] alpha;
   vector[N] lp = X * beta;            // one vectorized matrix-vector product, not N dot products
+  // Claude Sonnet 5 2026-11-19          4 lines
+  // gamma: the per-cluster random intercept blrm.r's draws-extraction
+  // code expects (it looks for a parameter literally named "gamma",
+  // matching blrm's own Stan files' identical convention). For the
+  // single-sigma case this is the SCALED intercept sigmag*gamma_raw,
+  // exactly as blrm's own `gamma = sigmag[1]*gamma_raw` does. For
+  // mix_re there is no single per-cluster scale (the weight varies by
+  // observation via mre), so gamma is left as gamma_raw itself -- the
+  // STANDARDIZED v_i -- matching rms::orm.rfit()'s own reporting
+  // convention exactly (it reports the unscaled v_i, not a scaled
+  // quantity, whenever mre is active; see its own ormrfit() return
+  // value and agqStep()'s header comment).
+  vector[Nc] gamma = gamma_raw;
   vector[N] gamma_eta;                 // precomputed per-observation random-effect contribution
   vector[N] log_lik;
 
@@ -292,7 +405,8 @@ transformed parameters {
   if (Nc == 0) {
     gamma_eta = rep_vector(0, N);
   } else if (use_mre == 0) {
-    gamma_eta = sigmag[1] * gamma_raw[cluster];
+    gamma = sigmag[1] * gamma_raw;
+    gamma_eta = gamma[cluster];
   } else {
     gamma_eta = (sigma1[1] * (1 - mre) + sigma2[1] * mre) .* gamma_raw[cluster];
   }
@@ -320,4 +434,5 @@ model {
   }
   target += log_lik;
   target += dirichlet_lpdf(pi | rep_vector(conc, k));
+  if (cn > 0) target += normal_lpdf(C * beta | cmus, csds);
 }

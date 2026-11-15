@@ -1,4 +1,81 @@
 
+##' Design Matrices and Priors for a Linear Contrast Specification
+##'
+##' Internal helper shared by [blrm()] and [borm()] implementing the `pcontrast`/`npcontrast` mechanism: builds the design matrices for a list of user-specified predictor settings via [rms::Xcontrast()], evaluates the requested contrast expression(s) on them, QR-transforms the result into the scale the Stan code actually samples on, and assembles the corresponding Gaussian prior mean/SD vectors.
+##'
+##' Claude Sonnet 5 2026-11-19          entire function
+##'
+##' Extracted from a closure that used to live inside [blrm()] itself (capturing `ylev`/`pppo` from its enclosing scope) so that [borm()] can call the identical logic -- per this package's own standing lesson that a helper needed in more than one file must be a top-level function, not one defined inside another function's body. `ylev`/`pppo`/`clas` are passed explicitly here in place of that closure capture; behavior is otherwise unchanged. The two `d$C <- `-style side effects the original additionally performed on its caller's `d` (the Stan data list) were dropped as redundant: every caller already applies the identical assignment itself from this function's own return value.
+##' @param fo a partially-built fit object (plain `list`, not yet classed) carrying enough of `Design`/`terms`/`assign`/`sformula` for [rms::Xcontrast()] to compute design matrices from
+##' @param X the model design matrix contrasts are computed against (`X` for `pcontrast`, `Z` for `npcontrast`)
+##' @param wqr the QR decomposition object for `X`, from [selectedQr()]
+##' @param pc the user-supplied `pcontrast` or `npcontrast` list
+##' @param main `TRUE` when building `pcontrast` (contributes to `pppo`-adjusted placeholder sizing), `FALSE` for `npcontrast`
+##' @param ylev vector of distinct ordered Y values/levels
+##' @param pppo number of partial-PO predictors (0 if the model has none, e.g. always for `borm()` for now)
+##' @param clas class vector to assign to `fo` so [rms::Xcontrast()]/`predictrms()` dispatch correctly for the calling function's own model type
+##' @return a list with `cn` (number of contrasts), `Contrast` (on the original parameter scale), `C` (QR-transformed, ready for Stan), `cmus`, `csds`
+##' @author Frank Harrell
+##' @noRd
+docon <- function(fo, X, wqr, pc, main, ylev, pppo, clas) {
+  nint <- length(ylev) - 1
+  fo$coefficients <- rep(0., nint + ncol(X))
+  fo$tau <- rep(0., pppo)
+  fo$draws <- 1L # trick predictrms into bayes=TRUE
+  fo$param <- rbind(
+    mean   = rep(0., nint + ncol(X) + pppo * main),
+    median = rep(0., nint + ncol(X) + pppo * main)
+  )
+  class(fo) <- clas
+  weights <- pc$weights
+  if (!length(weights)) weights <- "equal"
+  expand <- pc$expand
+  if (!length(expand)) expand <- TRUE
+  cmus <- pc$mu
+  csds <- pc$sd
+  con <- pc$contrast
+  if (!length(con)) stop("must include contrast in pcontrast")
+  if (!is.expression(con)) stop("contrast must be expression()")
+  pc[c("weights", "expand", "mu", "sd", "contrast", "ycut")] <- NULL
+  cnam <- names(pc)
+  if (!length(cnam) || any(cnam == "")) {
+    stop("predictor setting lists in pcontrast must be named")
+  }
+  ## Compute design matrices to be used in contrasts
+  XC <- lapply(
+    pc,
+    function(x) {
+      do.call(
+        Xcontrast, # Xcontrast is in rms
+        list(fo,
+          a = x, weights = weights,
+          expand = expand, Zmatrix = FALSE
+        )
+      )
+    }
+  )
+
+  ## Over expressions in contrasts evaluate them in XC
+  Contrast <- do.call(rbind, lapply(con, eval, XC))
+  cn <- nrow(Contrast)
+  if (!length(cmus)) cmus <- 0.
+  if (!length(csds)) csds <- 100.
+  if (length(cmus) == 1) cmus <- rep(cmus, length = cn)
+  if (length(csds) == 1) csds <- rep(csds, length = cn)
+  if (length(cmus) != cn || length(csds) != cn) {
+    stop(
+      "mismatch between number of contrasts (", cn,
+      "), length of mu (", length(cmus),
+      ") and length of sd (", length(csds), ")"
+    )
+  }
+  Contrastt <- Contrast %*% wqr$Rinv # QR-transformed contrasts
+  list(
+    cn = cn, Contrast = Contrast, C = as.array(Contrastt),
+    cmus = as.array(cmus), csds = as.array(csds)
+  )
+}
+
 ##' Print Stan Diagnostics
 ##'
 ##' Retrieves the effect samples sizes and Rhats computed after a fitting function ran `rstan`, and prepares it for printing.  If the fit was created by `stackImpute`, the diagnostics for all imputations are printed (separately).
