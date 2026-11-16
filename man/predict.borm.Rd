@@ -4,18 +4,49 @@
 \alias{predict.borm}
 \title{Make Predictions from a \code{borm()} Fit}
 \usage{
-\method{predict}{borm}(object, ...)
+\method{predict}{borm}(
+  object,
+  ...,
+  kint = NULL,
+  ycut = NULL,
+  fun = NULL,
+  funint = TRUE,
+  type = c("lp", "fitted", "fitted.ind", "x", "data.frame", "terms", "cterms", "ccterms",
+    "adjto", "adjto.data.frame", "model.frame"),
+  se.fit = FALSE,
+  codes = FALSE,
+  posterior.summary = c("mean", "median", "all"),
+  cint = 0.95
+)
 }
 \arguments{
 \item{object}{a \code{\link[=borm]{borm()}} fit object}
 
-\item{...}{passed to \code{\link[=predict.blrm]{predict.blrm()}}}
+\item{...}{passed to \code{\link[=predict.blrm]{predict.blrm()}}, or (for a \code{yde}-fitted model) to \code{\link[rms:predictrms]{rms::predictrms()}}}
+
+\item{kint}{see \code{\link[=predict.blrm]{predict.blrm()}}}
+
+\item{ycut}{for a \code{yde}-fitted model, the Y value(s) at which to evaluate the Y-dependent effect; see \code{\link[=blrm]{blrm()}}'s own \code{ycut} documentation under \code{predict.blrm}. Defaults to the fit's reference intercept's Y level, exactly as \code{\link[=predict.blrm]{predict.blrm()}} does.}
+
+\item{fun}{see \code{\link[=predict.blrm]{predict.blrm()}}; not yet implemented for a \code{yde}-fitted model (errors if given)}
+
+\item{funint}{see \code{\link[=predict.blrm]{predict.blrm()}}}
+
+\item{type}{see \code{\link[=predict.blrm]{predict.blrm()}}; for a \code{yde}-fitted model only \code{'lp'} and \code{'x'} are currently implemented (errors otherwise)}
+
+\item{se.fit}{see \code{\link[=predict.blrm]{predict.blrm()}}}
+
+\item{codes}{see \code{\link[=predict.blrm]{predict.blrm()}}}
+
+\item{posterior.summary}{see \code{\link[=predict.blrm]{predict.blrm()}}}
+
+\item{cint}{see \code{\link[=predict.blrm]{predict.blrm()}}}
 }
 \value{
 see \code{\link[=predict.blrm]{predict.blrm()}}
 }
 \description{
-Predict method for \code{\link[=borm]{borm()}} objects; delegates entirely to \code{\link[=predict.blrm]{predict.blrm()}}, which is already link-and-model-structure-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}, with its only \code{ppo}/\code{cppo}-specific logic guarded behind fields \code{borm()} always sets to 0/\code{NULL}). See \code{\link[=predict.blrm]{predict.blrm()}} for the full set of arguments and their meaning.
+Predict method for \code{\link[=borm]{borm()}} objects. When the fit did not use \code{yde}/\code{ytrans}, delegates entirely to \code{\link[=predict.blrm]{predict.blrm()}}, which is already link-and-model-structure-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}, with its only \code{ppo}/\code{cppo}-specific logic guarded behind fields \code{borm()} always sets to 0/\code{NULL}). When the fit did use \code{yde}/\code{ytrans}, has its own \code{yde}-aware implementation for \code{type='lp'} and \code{type='x'} (the two most commonly needed, and the building blocks \code{type='fitted'} etc. use internally); other types, and \verb{fun=}, are not yet implemented for a \code{yde}-fitted model and raise an informative error rather than silently ignoring the Y-dependent effect, since \code{\link[=predict.blrm]{predict.blrm()}}'s own (hardcoded single-column \code{cppo}) logic cannot be reused unchanged for \code{borm()}'s matrix-valued \code{tau}.
 }
 \seealso{
 \code{\link[=predict.blrm]{predict.blrm()}}

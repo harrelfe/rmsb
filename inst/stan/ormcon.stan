@@ -24,25 +24,34 @@
 //    row_vector dot products a per-observation X[n]*beta would need
 //    (one small autodiff expression per observation vs. one large,
 //    well-vectorized one) -- the same reasoning as point 1, applied to
-//    a different loop-invariant-structure cost. lp2 is a placeholder,
-//    always 0 and passed as plain `data` from R for now, for the
-//    future ydep Y-dependent linear predictor contribution (see
-//    CLAUDE.md's ydep notes). Once ydep has real coefficients to
-//    estimate, lp2 can no longer be `data`: like lp = X*beta above,
-//    any expression combining a parameter with data must be computed
-//    inside Stan (transformed parameters, or inline), not precomputed
-//    in R, so that autodiff sees the dependency -- the fixed Y-
-//    dependent score design can still come from R as data, same as
-//    blrm's pposcore/Z, but its combination with the new ydep
-//    coefficient parameter(s) has to happen here. Separately, ydep's
-//    exact per-alpha-index indexing (parallel to blrm's
-//    pposcore[ia+1] vs pposcore[ia2+1] -- a real Y-dependent effect
-//    varies by which of ia/ia2 is being evaluated, not just by
-//    observation) is an open design question, not yet settled with
-//    Frank; a single vector[N] lp2 shared identically between e1 and
-//    e2, as used below, is almost certainly the wrong shape once that
-//    is designed and will need revisiting then, even though it is a
-//    harmless placeholder while it is always 0.
+//    a different loop-invariant-structure cost.
+//
+// Claude Sonnet 5 2026-11-21          entire paragraph
+// ydep (borm()'s `yde`/`ytrans` arguments): Z (CENTERED, QR-
+// orthogonalized in R, like X) is the yde design matrix, q its number
+// of columns; ytransmat is ytrans(ylev) -- one row per Y LEVEL (k
+// rows, auto-centered/scaled in R), m columns. tau (a q x m parameter
+// matrix) combines them: ZT = Z*tau (computed once, vectorized, in
+// transformed parameters -- MUST be inside Stan, not R, since it
+// combines a parameter with data, same reasoning as lp = X*beta
+// above), then ydeterm1/ydeterm2 gather the Y-LEVEL-specific row of
+// ytransmat for each observation's ia/ia2 alpha index (a +1 shift from
+// alpha-index to Y-level-index, exactly like blrm's
+// pposcore[ia+1]/pposcore[ia2+1]) and dot it against that
+// observation's ZT row (rows_dot_product, confirmed to compile and
+// give numerically correct results via a standalone test harness
+// before relying on it here). m=1 with Z containing a single yde
+// predictor and ytrans a single score function reduces exactly to
+// blrm's own cppo/pposcore mechanism (tau becomes a q x 1 matrix, i.e.
+// a vector, multiplying a single Y-level-indexed scalar). q=0 and m=0
+// together (yde absent) make Z, ytransmat, and tau all zero-sized;
+// confirmed via a standalone test harness that this compiles and gives
+// an identically-zero contribution, not an error -- borm() always
+// supplies q=0, m=0 when yde is not given. ydeterm1/ydeterm2 are added
+// into e1/e2_raw inside each pw_log_lik_* function BEFORE the existing
+// has2/sign-selection dummy-pair substitution (see below), so the
+// 0 .* non-finite = NaN protection already built for those hazards
+// covers the new term for free -- no separate protection needed.
 // 3. rms::orm.rfit()'s dual-sigma mix_re extension to the random
 //    intercept -- gamma_ij = [sigma1*(1-mre_ij) + sigma2*mre_ij] * v_i,
 //    sigma1 constrained positive, sigma2 free -- is implemented
@@ -95,9 +104,12 @@
 // cauchy_lcdf exist to avoid, unmeasured here, so they keep the
 // scalar per-observation loop instead of trading accuracy for speed.
 //
-// No priors, contrasts, or Stan code for ppo/cppo are included: borm
-// does not have them yet (ydep, when designed, will play that role).
-// No pcontrast support either -- not requested for borm.
+// No ppo/cppo Stan code is included: borm's ydep (above) plays that
+// role instead. pcontrast is supported (C/cmus/csds below, identical
+// mechanism to blrm's own); tau's prior is a single scalar-SD
+// normal(0, tausd) on every entry by default, not pcontrast/npcontrast
+// based (unlike blrm's own constrained-PPO tau, which has no default
+// prior at all) -- Frank's explicit choice for borm.
 
 functions {
   // ---- per-family stable log CDF / log complementary CDF ----
@@ -164,9 +176,10 @@ functions {
   vector logCCDF_cloglog (vector x) { return -exp(fmin(x, 700.)); }
 
   // ---- logistic/loglog/cloglog: fully vectorized, no loop at all ----
-  // e is the same quantity (lp + lp2 + random-effect contribution) for
-  // both the p1 and p2 components of one observation; only the
-  // intercept differs between them. ia2_safe is ia2 with every 0
+  // e is the same quantity (lp + random-effect contribution) for both
+  // the p1 and p2 components of one observation; the ydep contribution
+  // (ydeterm1/ydeterm2) and the intercept are the only parts that
+  // differ between them. ia2_safe is ia2 with every 0
   // (meaning "no second component") clamped to a dummy valid index
   // (1) so alpha[ia2_safe] never goes out of bounds; has2 (1 where
   // ia2 > 0, 0 otherwise) then selects, by elementwise arithmetic
@@ -203,24 +216,30 @@ functions {
   // selection fix just below (feed something that provably cannot be
   // non-finite to the branch that will be multiplied by zero, rather
   // than trying to bound how extreme the real data can make it).
-  vector pw_log_lik_logistic(vector alpha, vector lp, vector lp2, vector gamma_eta,
+  // Claude Sonnet 5 2026-11-21          3 lines
+  // ydeterm1/ydeterm2 (the ydep Y-dependent contribution at the ia/ia2
+  // alpha indices respectively) are added into e1/e2_raw BEFORE the
+  // has2 dummy-pair substitution below, so they inherit that
+  // substitution's existing NaN-safety for free on unused rows -- no
+  // separate protection needed for the new term.
+  vector pw_log_lik_logistic(vector alpha, vector lp, vector ydeterm1, vector ydeterm2, vector gamma_eta,
                              array[] int ia, array[] int ia2_safe, vector has2, vector sgn) {
-    vector[num_elements(lp)] e  = lp + lp2 + gamma_eta;
-    vector[num_elements(lp)] e1 = alpha[ia] + e;
-    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e;
+    vector[num_elements(lp)] e  = lp + gamma_eta;
+    vector[num_elements(lp)] e1 = alpha[ia] + e + ydeterm1;
+    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e + ydeterm2;
     vector[num_elements(lp)] e1_two = has2 .* e1     + (1 - has2) .* 0.;
     vector[num_elements(lp)] e2_two = has2 .* e2_raw + (1 - has2) .* (-1.);
     return has2 .* log_inv_logit_diff(e1_two, e2_two) + (1 - has2) .* log_inv_logit(sgn .* e1);
   }
 
-  vector pw_log_lik_probit(vector alpha, vector lp, vector lp2, vector gamma_eta,
+  vector pw_log_lik_probit(vector alpha, vector lp, vector ydeterm1, vector ydeterm2, vector gamma_eta,
                            array[] int ia, array[] int ia2, vector sgn) {
     int N = num_elements(lp);
     vector[N] out;
     for (n in 1:N) {
-      real e  = lp[n] + lp2[n] + gamma_eta[n];
-      real e1 = alpha[ia[n]] + e;
-      if (ia2[n] > 0) out[n] = log_diff_exp(logCDF_probit(e1), logCDF_probit(alpha[ia2[n]] + e));
+      real e  = lp[n] + gamma_eta[n];
+      real e1 = alpha[ia[n]] + e + ydeterm1[n];
+      if (ia2[n] > 0) out[n] = log_diff_exp(logCDF_probit(e1), logCDF_probit(alpha[ia2[n]] + e + ydeterm2[n]));
       else            out[n] = sgn[n] > 0 ? logCDF_probit(e1) : logCCDF_probit(e1);
     }
     return out;
@@ -241,17 +260,17 @@ functions {
   // cloglog has the mirror-image hazard on logCCDF_cloglog(x) =
   // -exp(x) (overflows for large positive x instead), fixed
   // identically; x=0 is finite for it too.
-  vector pw_log_lik_loglog(vector alpha, vector lp, vector lp2, vector gamma_eta,
+  vector pw_log_lik_loglog(vector alpha, vector lp, vector ydeterm1, vector ydeterm2, vector gamma_eta,
                            array[] int ia, array[] int ia2_safe, vector has2, vector sgn) {
-    vector[num_elements(lp)] e  = lp + lp2 + gamma_eta;
-    vector[num_elements(lp)] e1 = alpha[ia] + e;
+    vector[num_elements(lp)] e  = lp + gamma_eta;
+    vector[num_elements(lp)] e1 = alpha[ia] + e + ydeterm1;
     // See the comment above pw_log_lik_logistic for why a FIXED dummy
     // pair (not one derived from e1) is needed here, not just an
     // ordering fix: logCDF_loglog saturates to the same double-
     // precision value at both e1 and e1-1 once e1 is only moderately
     // negative, which would make log_diff_exp(e1, e1-1) legitimately
     // -Inf on an unused row despite e1 > e1-1 holding.
-    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e;
+    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e + ydeterm2;
     vector[num_elements(lp)] e1_two = has2 .* e1     + (1 - has2) .* 0.;
     vector[num_elements(lp)] e2_two = has2 .* e2_raw + (1 - has2) .* (-1.);
     // sgn > 0 selects logCDF vs. logCCDF elementwise; sgn is +-1, so
@@ -263,11 +282,11 @@ functions {
          + (1 - has2) .* (indF .* logCDF_loglog(e1_cdf) + (1 - indF) .* logCCDF_loglog(e1_ccdf));
   }
 
-  vector pw_log_lik_cloglog(vector alpha, vector lp, vector lp2, vector gamma_eta,
+  vector pw_log_lik_cloglog(vector alpha, vector lp, vector ydeterm1, vector ydeterm2, vector gamma_eta,
                             array[] int ia, array[] int ia2_safe, vector has2, vector sgn) {
-    vector[num_elements(lp)] e  = lp + lp2 + gamma_eta;
-    vector[num_elements(lp)] e1 = alpha[ia] + e;
-    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e;
+    vector[num_elements(lp)] e  = lp + gamma_eta;
+    vector[num_elements(lp)] e1 = alpha[ia] + e + ydeterm1;
+    vector[num_elements(lp)] e2_raw = alpha[ia2_safe] + e + ydeterm2;
     vector[num_elements(lp)] e1_two = has2 .* e1     + (1 - has2) .* 0.;
     vector[num_elements(lp)] e2_two = has2 .* e2_raw + (1 - has2) .* (-1.);
     vector[num_elements(lp)] indF    = (1 + sgn) / 2;
@@ -277,14 +296,14 @@ functions {
          + (1 - has2) .* (indF .* logCDF_cloglog(e1_cdf) + (1 - indF) .* logCCDF_cloglog(e1_ccdf));
   }
 
-  vector pw_log_lik_cauchit(vector alpha, vector lp, vector lp2, vector gamma_eta,
+  vector pw_log_lik_cauchit(vector alpha, vector lp, vector ydeterm1, vector ydeterm2, vector gamma_eta,
                             array[] int ia, array[] int ia2, vector sgn) {
     int N = num_elements(lp);
     vector[N] out;
     for (n in 1:N) {
-      real e  = lp[n] + lp2[n] + gamma_eta[n];
-      real e1 = alpha[ia[n]] + e;
-      if (ia2[n] > 0) out[n] = log_diff_exp(logCDF_cauchit(e1), logCDF_cauchit(alpha[ia2[n]] + e));
+      real e  = lp[n] + gamma_eta[n];
+      real e1 = alpha[ia[n]] + e + ydeterm1[n];
+      if (ia2[n] > 0) out[n] = log_diff_exp(logCDF_cauchit(e1), logCDF_cauchit(alpha[ia2[n]] + e + ydeterm2[n]));
       else            out[n] = sgn[n] > 0 ? logCDF_cauchit(e1) : logCCDF_cauchit(e1);
     }
     return out;
@@ -295,14 +314,14 @@ functions {
   // (needed by the scalar-loop probit/cauchit branches); ia2_safe/
   // has2 are the precomputed vectorized-selection pair (see transformed
   // data) needed by the vectorized logistic/loglog/cloglog branches.
-  vector pw_log_lik(int link, vector alpha, vector lp, vector lp2, vector gamma_eta,
+  vector pw_log_lik(int link, vector alpha, vector lp, vector ydeterm1, vector ydeterm2, vector gamma_eta,
                     array[] int ia, array[] int ia2, array[] int ia2_safe, vector has2,
                     vector sgn) {
-    if      (link == 1) return pw_log_lik_logistic(alpha, lp, lp2, gamma_eta, ia, ia2_safe, has2, sgn);
-    else if (link == 2) return pw_log_lik_probit   (alpha, lp, lp2, gamma_eta, ia, ia2, sgn);
-    else if (link == 3) return pw_log_lik_loglog   (alpha, lp, lp2, gamma_eta, ia, ia2_safe, has2, sgn);
-    else if (link == 4) return pw_log_lik_cloglog  (alpha, lp, lp2, gamma_eta, ia, ia2_safe, has2, sgn);
-    else                 return pw_log_lik_cauchit  (alpha, lp, lp2, gamma_eta, ia, ia2, sgn);
+    if      (link == 1) return pw_log_lik_logistic(alpha, lp, ydeterm1, ydeterm2, gamma_eta, ia, ia2_safe, has2, sgn);
+    else if (link == 2) return pw_log_lik_probit   (alpha, lp, ydeterm1, ydeterm2, gamma_eta, ia, ia2, sgn);
+    else if (link == 3) return pw_log_lik_loglog   (alpha, lp, ydeterm1, ydeterm2, gamma_eta, ia, ia2_safe, has2, sgn);
+    else if (link == 4) return pw_log_lik_cloglog  (alpha, lp, ydeterm1, ydeterm2, gamma_eta, ia, ia2_safe, has2, sgn);
+    else                 return pw_log_lik_cauchit  (alpha, lp, ydeterm1, ydeterm2, gamma_eta, ia, ia2, sgn);
   }
 }
 
@@ -320,7 +339,20 @@ data {
   // the stored QR R-matrix (see borm()'s own documentation for the
   // exact mechanism, shared verbatim with blrm()).
   matrix[N, p] X;                   // matrix of CENTERED, QR-orthogonalized predictors (done in R)
-  vector[N] lp2;                    // placeholder for future ydep contribution; 0 for now
+
+  // Claude Sonnet 5 2026-11-21          6 lines
+  // ydep: Z is the yde design matrix (CENTERED, QR-orthogonalized in R,
+  // exactly like X), q its number of columns (0 when yde is absent).
+  // ytransmat is ytrans(ylev) -- one row per Y LEVEL (k rows, matching
+  // ylev's own length and alpha-index-to-Y-level convention exactly,
+  // as blrm's pposcore does), m columns (0 when yde is absent),
+  // auto-centered/scaled in R. tausd is the prior SD for every tau
+  // entry (a single scalar normal(0, tausd) prior, per-element).
+  int<lower = 0> q;                  // number of yde predictors (0 = yde absent)
+  int<lower = 0> m;                  // number of ytrans columns (0 = yde absent)
+  matrix[N, q] Z;                    // yde design matrix (CENTERED, QR-orthogonalized in R)
+  matrix[k, m] ytransmat;            // ytrans(ylev), auto-centered/scaled in R; k rows
+  real<lower = 0> tausd;             // prior SD for tau, elementwise normal(0, tausd)
   // Precomputed via rms::ormIdx() in R; see lrmconppo.stan.
   array[N] int<lower = 1, upper = k - 1> ia;  // intercept index for p1
   array[N] int<lower = 0, upper = k - 1> ia2; // intercept index for p2 (0 = none)
@@ -335,6 +367,21 @@ data {
   matrix[cn, p] C;                   // contrasts (already QR-transformed)
   vector[cn] cmus;
   vector[cn] csds;
+
+  // Claude Sonnet 5 2026-11-22          6 lines
+  // npcontrast: Gaussian priors on contrasts spanning BOTH beta and
+  // tau (combined, since beta and tau are separate parameter blocks
+  // and a quantity like "the effect of a predictor at a given Y
+  // value" necessarily mixes both) -- C2's p+q*m columns multiply
+  // append_row(beta, to_vector(tau)); already QR-transformed (each
+  // named setting's row individually, in R, before any contrast
+  // arithmetic -- see bormDoconYdep()'s own documentation for why a
+  // single whole-matrix transform at the end, as pcontrast's C above
+  // uses, does not work here).
+  int<lower = 0> cn2;
+  matrix[cn2, p + q * m] C2;
+  vector[cn2] cmus2;
+  vector[cn2] csds2;
 
   int<lower = 0> Nc;                  // number of clusters (0 = no clustering)
   array[Nc == 0 ? 0 : N] int<lower = 1, upper = Nc> cluster;
@@ -367,6 +414,20 @@ transformed data {
     ia2_safe[n] = max(ia2[n], 1);
     has2[n] = ia2[n] > 0 ? 1 : 0;
   }
+  // Claude Sonnet 5 2026-11-21          6 lines
+  // ydep: ia/ia2_safe index alpha (1..k-1, Y-levels 2..k), but
+  // ytransmat has k rows (Y-levels 1..k, matching ylev, row 1 unused,
+  // exactly as blrm's pposcore[ia+1]/pposcore[ia2+1] convention
+  // requires a +1 shift from alpha-index to Y-level-index). Stan has
+  // no elementwise "+1" on an int array without a loop, so this shift
+  // is precomputed once here, not per gradient evaluation, matching
+  // ia2_safe/has2's own treatment just above.
+  array[N] int ia_p1;
+  array[N] int ia2_safe_p1;
+  for (n in 1:N) {
+    ia_p1[n] = ia[n] + 1;
+    ia2_safe_p1[n] = ia2_safe[n] + 1;
+  }
 }
 
 parameters {
@@ -379,6 +440,7 @@ parameters {
   array[Nc == 0 || use_mre == 1 ? 0 : 1] real<lower = 0> sigmag;    // single-sigma SD
   array[Nc == 0 || use_mre == 0 ? 0 : 1] real<lower = 0> sigma1;    // mix_re SD at mre = 0
   array[Nc == 0 || use_mre == 0 ? 0 : 1] real sigma2;               // mix_re SD at mre = 1 (sign free)
+  matrix[q, m] tau;                   // ydep coefficients; zero-sized when q==0 or m==0
 }
 
 transformed parameters {
@@ -399,6 +461,18 @@ transformed parameters {
   vector[Nc] gamma = gamma_raw;
   vector[N] gamma_eta;                 // precomputed per-observation random-effect contribution
   vector[N] log_lik;
+  // Claude Sonnet 5 2026-11-21          4 lines
+  // ydep: ZT = Z*tau computed once, vectorized (all-zero/empty when
+  // q==0 or m==0, confirmed safe -- see ormcon.stan's own test
+  // harness). ydeterm1/ydeterm2 are the per-observation Y-dependent
+  // contributions at alpha indices ia/ia2 respectively -- this MUST be
+  // computed inside Stan (not precomputed in R), since it combines a
+  // parameter (tau, via ZT) with data (ytransmat); the superseded flat
+  // lp2 placeholder could be data precisely because it never combined
+  // with a parameter at all.
+  matrix[N, m] ZT = Z * tau;
+  vector[N] ydeterm1 = rows_dot_product(ZT, ytransmat[ia_p1]);
+  vector[N] ydeterm2 = rows_dot_product(ZT, ytransmat[ia2_safe_p1]);
 
   for (j in 2:k) alpha[j - 1] = logit(sum(pi[j:k])); // predictors are CENTERED
 
@@ -411,7 +485,7 @@ transformed parameters {
     gamma_eta = (sigma1[1] * (1 - mre) + sigma2[1] * mre) .* gamma_raw[cluster];
   }
 
-  log_lik = pw_log_lik(link, alpha, lp, lp2, gamma_eta, ia, ia2, ia2_safe, has2, sgn);
+  log_lik = pw_log_lik(link, alpha, lp, ydeterm1, ydeterm2, gamma_eta, ia, ia2, ia2_safe, has2, sgn);
 }
 
 model {
@@ -435,4 +509,12 @@ model {
   target += log_lik;
   target += dirichlet_lpdf(pi | rep_vector(conc, k));
   if (cn > 0) target += normal_lpdf(C * beta | cmus, csds);
+  if (cn2 > 0) target += normal_lpdf(C2 * append_row(beta, to_vector(tau)) | cmus2, csds2);
+  // Claude Sonnet 5 2026-11-21          1 line
+  // ydep: default prior, a single scalar SD normal(0, tausd) on every
+  // tau entry, per Frank's explicit instruction (unlike blrm's own
+  // constrained-PPO tau, which has no default prior at all and relies
+  // solely on npcontrast). A no-op when q==0 or m==0 (to_vector of a
+  // zero-sized matrix has zero elements).
+  if (q > 0 && m > 0) target += normal_lpdf(to_vector(tau) | 0, tausd);
 }

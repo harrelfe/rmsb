@@ -15,7 +15,7 @@
 see \code{\link[=Quantile.blrm]{Quantile.blrm()}}
 }
 \description{
-Delegates entirely to \code{\link[=Quantile.blrm]{Quantile.blrm()}}, which is already link-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}). See \code{\link[=Quantile.blrm]{Quantile.blrm()}} for details.
+Delegates entirely to \code{\link[=Quantile.blrm]{Quantile.blrm()}}, which is already link-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}). See \code{\link[=Quantile.blrm]{Quantile.blrm()}} for details. Not yet implemented when the fit used \code{yde}/\code{ytrans} (errors informatively rather than silently ignoring the Y-dependent effect, since \code{\link[=Quantile.blrm]{Quantile.blrm()}}'s own logic is hardcoded to a single-column \code{cppo}).
 }
 \seealso{
 \code{\link[=Quantile.blrm]{Quantile.blrm()}}

@@ -9,7 +9,7 @@
 ##' @param fo a partially-built fit object (plain `list`, not yet classed) carrying enough of `Design`/`terms`/`assign`/`sformula` for [rms::Xcontrast()] to compute design matrices from
 ##' @param X the model design matrix contrasts are computed against (`X` for `pcontrast`, `Z` for `npcontrast`)
 ##' @param wqr the QR decomposition object for `X`, from [selectedQr()]
-##' @param pc the user-supplied `pcontrast` or `npcontrast` list
+##' @param pc the user-supplied `pcontrast` or `npcontrast` list. For `npcontrast` (`main=FALSE`) on a model with a `cppo`, `pc` may include `ycut`: a single Y value applied to every named setting, or a named vector/list giving a separate Y value per named setting, used to automatically weight each setting's Z-row by `cppo(ycut)` before the contrast expression is evaluated. `ycut` is a no-op for `pcontrast` (`main=TRUE`).
 ##' @param main `TRUE` when building `pcontrast` (contributes to `pppo`-adjusted placeholder sizing), `FALSE` for `npcontrast`
 ##' @param ylev vector of distinct ordered Y values/levels
 ##' @param pppo number of partial-PO predictors (0 if the model has none, e.g. always for `borm()` for now)
@@ -27,6 +27,21 @@ docon <- function(fo, X, wqr, pc, main, ylev, pppo, clas) {
     median = rep(0., nint + ncol(X) + pppo * main)
   )
   class(fo) <- clas
+  # Claude Sonnet 5 2026-11-22          4 lines
+  # fo is a stub (just enough fields for Xcontrast()'s internal
+  # predict(fit, d, type='x') call to work), not a complete fit --
+  # but it still inherits qyde from the real fit object if yde is
+  # active, and predict.borm() dispatches on qyde>0 to its own
+  # yde-aware bormPredictYdep(), which assumes a COMPLETE fit object
+  # (object$draws, object$zDesign, etc.) and fails on a stub
+  # (confirmed directly: Xcontrast's internal predict() call error'd
+  # inside bormPredictYdep when docon() was used for a yde-active
+  # borm() fit's own plain pcontrast). Forcing qyde=0 here makes
+  # predict.borm() correctly treat this stub as the plain case and
+  # delegate straight to predict.blrm(), exactly like pppo/cppo are
+  # implicitly relied on to already be 0/NULL on fo for the same
+  # reason -- harmless no-op for blrm's own fo, which has no $qyde.
+  fo$qyde <- 0L
   weights <- pc$weights
   if (!length(weights)) weights <- "equal"
   expand <- pc$expand
@@ -36,23 +51,50 @@ docon <- function(fo, X, wqr, pc, main, ylev, pppo, clas) {
   con <- pc$contrast
   if (!length(con)) stop("must include contrast in pcontrast")
   if (!is.expression(con)) stop("contrast must be expression()")
+  ycut <- pc$ycut
   pc[c("weights", "expand", "mu", "sd", "contrast", "ycut")] <- NULL
   cnam <- names(pc)
   if (!length(cnam) || any(cnam == "")) {
     stop("predictor setting lists in pcontrast must be named")
   }
+
+  # Claude Sonnet 5 2026-11-19          12 lines
+  # ycut was documented (and accepted without error) for npcontrast as
+  # the Y-cutoff(s) at which the Z*tau contrast rows are evaluated, but
+  # was silently discarded here, so cppo()'s scaling always had to be
+  # applied by hand by the user (per npcontrast's own doc text). Fixed
+  # by applying it automatically to each named Z-row, for npcontrast
+  # (main=FALSE) models that have a cppo. A single ycut applies to
+  # every named setting; a NAMED ycut (one value per pc setting name)
+  # lets different settings use different Y cutoffs within the same
+  # contrast specification. Left a no-op for pcontrast (main=TRUE): the
+  # Stan pcontrast prior multiplies C against beta alone, so a
+  # cppo-weighted X row would not match beta's dimension. Backward
+  # compatible: only activates when ycut is explicitly supplied, which
+  # previously did nothing at all.
+  cppofun <- fo$cppo
+  useycut <- !main && length(ycut) > 0 && length(cppofun) > 0
+  if (useycut && length(names(ycut)) && !all(cnam %in% names(ycut))) {
+    stop("named ycut must give a value for every named setting in pc")
+  }
+
   ## Compute design matrices to be used in contrasts
-  XC <- lapply(
-    pc,
-    function(x) {
-      do.call(
+  XC <- Map(
+    function(x, nm) {
+      xc <- do.call(
         Xcontrast, # Xcontrast is in rms
         list(fo,
           a = x, weights = weights,
           expand = expand, Zmatrix = FALSE
         )
       )
-    }
+      if (useycut) {
+        yc <- if (length(names(ycut))) ycut[[nm]] else ycut[1]
+        xc <- xc * cppofun(yc)
+      }
+      xc
+    },
+    pc, cnam
   )
 
   ## Over expressions in contrasts evaluate them in XC

@@ -15,7 +15,7 @@
 see \code{\link[=ExProb.blrm]{ExProb.blrm()}}
 }
 \description{
-Delegates entirely to \code{\link[=ExProb.blrm]{ExProb.blrm()}}, which is already link-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}). See \code{\link[=ExProb.blrm]{ExProb.blrm()}} for details.
+Delegates entirely to \code{\link[=ExProb.blrm]{ExProb.blrm()}}, which is already link-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}). See \code{\link[=ExProb.blrm]{ExProb.blrm()}} for details. Not yet implemented when the fit used \code{yde}/\code{ytrans} (errors informatively rather than silently ignoring the Y-dependent effect, since \code{\link[=ExProb.blrm]{ExProb.blrm()}}'s own logic is hardcoded to a single-column \code{cppo}).
 }
 \seealso{
 \code{\link[=ExProb.blrm]{ExProb.blrm()}}

@@ -1,12 +1,12 @@
 ##' Bayesian Ordinal Regression
 ##'
-##' Uses `rstan` with pre-compiled Stan code, or `cmdstan`, to get posterior draws of parameters from a Bayesian ordinal (or binary) cumulative probability regression model, with a choice of 5 link families -- `borm()` is to [blrm()] as [rms::orm()] is to [rms::lrm()]: it generalizes the single (logistic) link that `blrm()` implements to all of the link families `orm()` supports, and is designed, like `orm()`, to scale to a very large number of distinct Y values.  Unlike `blrm()`, `borm()` does not (yet) implement the partial proportional odds model (`ppo`/`cppo`); `blrm()` remains the function to use for that.  A future Y-dependent effect generalization (`ydep`) is planned for `borm()` and will play `cppo`'s role once implemented.
+##' Uses `rstan` with pre-compiled Stan code, or `cmdstan`, to get posterior draws of parameters from a Bayesian ordinal (or binary) cumulative probability regression model, with a choice of 5 link families -- `borm()` is to [blrm()] as [rms::orm()] is to [rms::lrm()]: it generalizes the single (logistic) link that `blrm()` implements to all of the link families `orm()` supports, and is designed, like `orm()`, to scale to a very large number of distinct Y values.  Unlike `blrm()`, `borm()` does not implement the partial proportional odds model (`ppo`/`cppo`) itself; `blrm()` remains the function to use for that. Instead `borm()` implements `ydep`, a more general Y-dependent effect generalization that plays `cppo`'s role: `yde` (paralleling `ppo`) identifies which predictors get a Y-dependent effect, and `ytrans` (paralleling `cppo`, but returning a matrix of one or more columns instead of a single score) specifies the shape(s) of that dependency. A single-column `ytrans` with a single `yde` predictor reduces mathematically to `blrm()`'s own `cppo` mechanism.
 ##'
 ##' The Stan code internally uses a Dirichlet prior on the multinomial (category) probabilities at the predictor means, inducing a prior for the intercepts, exactly as [blrm()]'s own default (`iprior=0`) does -- `borm()` does not offer `blrm()`'s other two intercept-prior choices, since simulations showed they slow sampling badly once the number of distinct Y values is large, the regime `borm()` is specifically meant for.  Likewise, no data-dependent conditionals appear in the Stan code at all: censoring is handled entirely through subscripts precomputed once in R by [rms::ormIdx()] (the same routine [rms::orm.fit()] uses), not through per-observation branching in Stan.
 ##'
 ##' Design matrix columns are centered and QR-orthogonalized (via `rmsb`'s internal `selectedQr()`, the identical mechanism [blrm()] uses) before being handed to the Stan code, so that highly collinear columns do not hinder posterior sampling; **this transformation is done entirely in R, not in the Stan code**, which receives and fits `beta` on the already-transformed scale and knows nothing of the original covariate scale. Parameters are transformed back to the original data scale before being returned. Stan diagnostic output (e.g. from [stanDx()] or [stanGet()]) will show intercepts and coefficients on the centered/QR-transformed scale; everything `borm()` itself returns and prints is on the original, uncentered scale.
 ##'
-##' As with [blrm()], priors on regression coefficients are specified through contrasts, via `pcontrast`, rather than directly; see [blrm()]'s own documentation for the full `pcontrast` syntax, which `borm()` reuses unchanged. `npcontrast` (priors for partial-PO/`ydep` effects) is accepted as an argument for forward API compatibility but cannot actually be used yet, since `borm()` has no non-proportional-odds submodel until `ydep` is implemented; supplying it is an error.
+##' As with [blrm()], priors on regression coefficients (`beta`) are specified through contrasts, via `pcontrast`, rather than directly; see [blrm()]'s own documentation for the full `pcontrast` syntax, which `borm()` reuses unchanged (contrasts on `beta` alone). `tau` (the `ydep` coefficient matrix, present only when `yde`/`ytrans` are given) gets a single default prior, `normal(0, tausd)` independently on every entry, which `npcontrast` can override/augment for specific contrasts -- but unlike `blrm()`'s own `npcontrast` (which can only reference `tau`), `borm()`'s `npcontrast` can reference `beta`, `tau`, or both in the same contrast, since a Y-dependent effect is a combination of the two (`beta_j + Z_j . tau . ytransmat[y,]`, the effect of predictor `j` at Y value `y`). Each named predictor-setting list in `npcontrast` may include `ycut`, the Y value at which to evaluate that setting's `tau` contribution (see `pcontrast`'s own documentation for the general named-setting-list/`contrast=expression()` syntax, which is otherwise identical); a setting with no `ycut` contributes a pure-`beta` row, letting simple contrasts reduce to exactly the pure-`beta` or pure-`tau` case with no special syntax -- e.g. two settings sharing the same covariate values but different `ycut` have their `beta` parts cancel exactly in a difference, giving a contrast purely on the Y-dependent effect.
 ##'
 ##' `borm()` implements a single-level hierarchical random intercept for repeated-measures/clustered data via `cluster()` in the model formula, exactly as [blrm()] does, and additionally implements the dual-sigma `mix_re` extension to that random intercept (from `orm.rfit()`, `rms`'s internal, undocumented random-intercept fitter) via a `mix_re()` term in the formula (used together with `cluster()`), exactly as [rms::orm()] does -- see [rms::orm.fit()]'s own documentation, under `mre`, for the full statistical description of this extension. `mix_re` is not a `borm()` argument; it is extracted from the formula the same way `cluster` is.
 ##'
@@ -17,6 +17,9 @@
 ##' Set `options(rmsbmsg=FALSE)` to suppress certain information messages.
 ##' @param formula an R formula object that can use `rms` package enhancements such as the restricted interaction operator, and may include `cluster()` and (together with `cluster()`) `mix_re()` terms
 ##' @param family a character value specifying the distribution family, corresponding to logistic (the default), probit, loglog (`exp(-exp(-x))`; extreme value type I/Gumbel maximum), cloglog (`1-exp(-exp(x))`; Gumbel minimum), and cauchit (Cauchy) link functions for `Prob[Y >= y | X]`, matching [rms::orm()]'s own `family` argument exactly
+##' @param yde formula specifying the model predictors for which a Y-dependent effect is to be estimated, with no left-hand-side variable, paralleling [blrm()]'s own `ppo` argument exactly (including that its predictors may, and usually will, overlap those in `formula`). Must be accompanied by `ytrans`. If a predictor in `yde` is not in `formula`, it contributes only a Y-dependent effect, no constant (proportional-odds) one.
+##' @param ytrans a function of one argument, `y`, specifying the shape(s) of the Y-dependent effect(s) for the predictors in `yde`, paralleling [blrm()]'s own `cppo` argument but generalized to allow more than one shape at once: it is called on the distinct, ordered Y values seen in the data (`y`'s own values need not be the complete set, or in any particular order -- `ytrans` must work correctly on an arbitrary subset/order of Y values, since it is also called later, e.g. for contrasts, on individual Y values) and must return either a plain vector (one Y-dependent shape) or a matrix with one or more columns (several simultaneous Y-dependent shapes), one row (or value) per element of `y`. `ytrans`'s result is automatically centered and scaled (independently per column, using its own column means/SDs evaluated over the observed, not just distinct, Y values, exactly paralleling [blrm()]'s own `cppo`-centering convention under `normcppo=TRUE`) before being used, so `ytrans` itself need not do this. A single-column `ytrans` applied to a single `yde` predictor reduces mathematically to `blrm()`'s own `cppo` mechanism. Must be accompanied by `yde`.
+##' @param tausd the prior SD for a `normal(0, tausd)` prior placed independently on every entry of `tau`, the `ydep` coefficient matrix (one row per `yde` predictor, one column per `ytrans` column); ignored when `yde`/`ytrans` are not given.
 ##' @param data a data frame; defaults to using objects from the calling environment
 ##' @param subset a logical vector or integer subscript vector specifying which subset of data should be used
 ##' @param na.action default is `na.delete` to remove missings and report on them
@@ -25,7 +28,7 @@
 ##' @param rsdmean the assumed mean of the prior distribution of the random-intercept SD (or of `sigma1` when `mix_re` is used). When `psigma=2` this is the mean of an exponential distribution and defaults to 1. When `psigma=1` this is the mean of the half-t distribution and defaults to zero.
 ##' @param rsdsd applies only to `psigma=1` and is the scale parameter for the half-t distribution for the random-intercept SD (or `sigma1`), defaulting to 1. When `mix_re` is used, `rsdsd` is also reused, regardless of `psigma`, as the scale of a `normal(0, rsdsd)` prior for `sigma2` (which, unlike `sigma1`, may be negative) -- a reasonable default rather than something `orm.rfit()` (rms internal) itself specifies, since that function is a pure MLE with no prior on `sigma2` at all.
 ##' @param pcontrast a list specifying contrasts that are to be given Gaussian prior distributions, with exactly the syntax and semantics of [blrm()]'s own `pcontrast` argument; see its documentation for full details and examples.
-##' @param npcontrast accepted for forward compatibility with a future `ydep` non-proportional-odds submodel; `borm()` has no such submodel yet, so supplying `npcontrast` is an error.
+##' @param npcontrast a list specifying contrasts on `tau` (the `ydep` coefficient matrix), `beta`, or both, to be given Gaussian prior distributions, with the same named-predictor-setting-list/`contrast=expression()` syntax as `pcontrast` (see [blrm()]'s own `pcontrast` documentation), plus an optional `ycut` -- a single Y value applied to every named setting, or a named vector/list giving a different Y value per named setting -- specifying the Y value at which each setting's `tau` contribution is evaluated; a setting with no `ycut` contributes a pure-`beta` row. Requires `yde`/`ytrans` to be given; it is an error to supply `npcontrast` otherwise.
 ##' @param backend set to `cmdstan` to use `cmdstan` through the R `cmdstanr` package instead of the default `rstan`. You can also specify this with a global option `rmsb.backend`.
 ##' @param iter number of posterior samples per chain for [rstan::sampling()] to run, counting warmups
 ##' @param warmup number of warmup iterations to discard. Default is `iter`/2.
@@ -65,10 +68,11 @@
 ##' @export
 ##' @md
 borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", "cauchit"),
+                 yde = NULL, ytrans = NULL,
                  data = environment(formula), subset, na.action = na.delete,
                  conc = 1. / (0.8 + 0.35 * max(k, 3)),
                  psigma = 1, rsdmean = if (psigma == 1) 0 else 1,
-                 rsdsd = 1, pcontrast = NULL, npcontrast = NULL,
+                 rsdsd = 1, tausd = 10, pcontrast = NULL, npcontrast = NULL,
                  backend = c("rstan", "cmdstan"),
                  iter = 2000, warmup = iter / 2, chains = 4, refresh = 0,
                  progress = if (refresh > 0) "stan-progress.txt" else "",
@@ -80,9 +84,10 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
   call <- match.call()
   method <- match.arg(method)
   family <- match.arg(family)
-  if (length(npcontrast)) {
-    stop("npcontrast cannot be used until ydep is implemented in borm(); ",
-         "reserved for future use")
+  if (length(yde) && !length(ytrans)) stop("ytrans must be given when yde is given")
+  if (length(ytrans) && !length(yde)) stop("yde must be given when ytrans is given")
+  if (length(npcontrast) && !length(yde)) {
+    stop("npcontrast requires yde/ytrans to be given (it specifies contrasts on tau)")
   }
   backend <- if (missing(backend)) {
     getOption("rmsb.backend", "rstan")
@@ -104,10 +109,18 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
   callenv <- parent.frame() # don't delay these evaluations
   subset <- if (!missing(subset)) eval(substitute(subset), data, callenv)
 
-  data <- rms::modelData(data, formula,
+  data <- rms::modelData(data, formula, yde,
     subset = subset,
     na.action = na.action, callenv = callenv
   )
+  # Claude Sonnet 5 2026-11-21          2 lines
+  # data2 is rms::modelData()'s own second-formula-safe copy of data
+  # (the response variable is not present in it), needed when calling
+  # rms::Design() a second time for yde -- calling Design() twice on
+  # the same data object fails ("program logic error tl"), confirmed
+  # directly; blrm.r's own ppo block uses the identical data2 mechanism.
+  data2 <- attr(data, "data2")
+  attr(data, "data2") <- NULL
 
   prevhash <- NULL
   if (length(file) && file.exists(file)) {
@@ -187,11 +200,42 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
     z
   }
 
+  # Claude Sonnet 5 2026-11-21          entire block
+  # yde: parses exactly like blrm()'s own ppo formula (see blrm.r's
+  # identical block) into a design matrix Z. Predictors in yde may
+  # (and usually will) overlap formula's own predictors, per Frank's
+  # explicit instruction.
+  Z <- zatr <- zsformula <- zTerms <- NULL
+  qyde <- 0L
+  if (length(yde)) {
+    Z <- rms::Design(data2, formula = yde)
+    zatrx <- attributes(Z)
+    zsformula <- zatrx$sformula
+    zTerms <- zatrx$terms
+    attr(zTerms, "formula") <- yde
+    zatr <- zatrx$Design
+    zmmcolnames <- zatr$mmcolnames
+    Z <- model.matrix(zTerms, Z)
+    zalt <- attr(zmmcolnames, "alt")
+    if (!all(zmmcolnames %in% colnames(Z)) && length(zalt)) zmmcolnames <- zalt
+    Z <- Z[, zmmcolnames, drop = FALSE]
+    colnames(Z) <- zatr$colnames
+    qyde <- ncol(Z)
+  }
+
   wqrX <- selectedQr(X, center = TRUE)
   Xs <- trimit(wqrX$X)
   xbar <- wqrX$xbar
   xqrsd <- apply(Xs, 2, sd)
   wqrX$X <- NULL
+
+  zbar <- NULL
+  if (qyde > 0) {
+    wqrZ <- selectedQr(Z, center = TRUE)
+    Zs <- trimit(wqrZ$X)
+    zbar <- wqrZ$xbar
+    wqrZ$X <- NULL
+  }
 
   n <- nrow(X)
   p <- ncol(X)
@@ -201,6 +245,47 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
   midy <- ay$mid
   numy <- ay$freq
   names(numy) <- ylev
+
+  # Claude Sonnet 5 2026-11-21          entire block
+  # ytrans: paralleling blrm.r's own cppo-centering block (under
+  # normcppo=TRUE) exactly, but per-column (ytrans may return more
+  # than one column) and unconditional (Frank: "start with auto
+  # centering and scaling ytrans" -- no opt-out, unlike normcppo).
+  # Centering/scaling uses the EMPIRICAL distribution of observed Y
+  # (ylev[Y[, 1]], one value per observation), not a uniform average
+  # over the distinct levels -- matching blrm's cppoy <- cppo(ylev[Y[,
+  # 1]]) convention exactly, not reinvented. ytransmat has one row per
+  # Y LEVEL (k rows, matching ylev's own length): row 1 (lowest level)
+  # is computed but never referenced in the likelihood, exactly as
+  # blrm's pposcore[1] is not (ormcon.stan's ia/ia2 only ever address
+  # rows 2..k via the ia_p1/ia2_safe_p1 shift).
+  myde <- 0L
+  ytransmat <- matrix(0., length(ylev), 0)
+  if (qyde > 0) {
+    yv <- ytrans(ylev[Y[, 1]])
+    if (!is.matrix(yv)) yv <- matrix(yv, ncol = 1)
+    ycenter <- colMeans(yv)
+    yscale <- apply(yv, 2, sd)
+    yscale[is.na(yscale) | yscale == 0] <- 1
+    Ytrans <- function(y, fun, center, scale) {
+      v <- fun(y)
+      if (!is.matrix(v)) v <- matrix(v, ncol = 1)
+      sweep(sweep(v, 2, center, "-"), 2, scale, "/")
+    }
+    formals(Ytrans)$fun <- ytrans
+    formals(Ytrans)$center <- ycenter
+    formals(Ytrans)$scale <- yscale
+    ytrans <- Ytrans
+    ytransmat <- ytrans(ylev)
+    if (NROW(ytransmat) != length(ylev)) {
+      stop(
+        "ytrans(ylev) must return one row (or value) per element of ylev (",
+        length(ylev), "), got ", NROW(ytransmat)
+      )
+    }
+    myde <- ncol(ytransmat)
+    if (myde == 0) stop("ytrans must return at least one column")
+  }
 
   nrp <- length(ylev) - 1L
   kmid <- if (nrp == 1) {
@@ -212,6 +297,7 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
   }
 
   ass <- rms::DesignAssign(atr, nrp, Terms)
+  zass <- if (qyde > 0) rms::DesignAssign(zatr, 0, zTerms)
 
   # Claude Sonnet 5 2026-11-19          entire block
   # Precompute the per-observation intercept subscripts (ia, ia2, sgn)
@@ -233,7 +319,9 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
 
   d <- list(
     X = Xs, N = n, p = p, k = k, link = link,
-    lp2 = rep(0., n),
+    q = qyde, m = myde,
+    Z = if (qyde > 0) Zs else matrix(0., n, 0),
+    ytransmat = ytransmat, tausd = tausd,
     ia = idx$ia, ia2 = idx$ia2, sgn = idx$sgn,
     conc = conc,
     cn = 0L, C = array(0., c(0, p)), cmus = array(numeric(0)), csds = array(numeric(0))
@@ -286,6 +374,11 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
   )
   datahash <- digest::digest(hashobj)
   if (length(prevhash) && prevhash == datahash) {
+    # Claude Sonnet 5 2026-11-21          2 lines
+    # Re-hydrate ytrans from its deparsed text, same as blrm.r does for
+    # a cached cppo -- a returned cache hit must have a real function
+    # there, not the bare string it was stored as.
+    if (length(prevfit$ytrans)) prevfit$ytrans <- eval(parse(text = prevfit$ytrans))
     return(prevfit)
   }
   hashobj <- NULL
@@ -305,17 +398,26 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
     call = call, fitter = fitter, link = family, family = family,
     yname = yname, ylevels = ylev, freq = numy,
     pppo = 0L, cppo = NULL, # degrades blrm()-shared predict/Mean/Quantile/ExProb code correctly
-    Design = atr, zDesign = NULL,
+    Design = atr, zDesign = zatr,
     scale.pred = switch(family,
       logistic = c("log odds", "Odds Ratio"),
       loglog   = c("log hazard", "Hazard Ratio"),
       c(family, "")
     ),
-    terms = Terms, assign = ass, zassign = NULL,
+    terms = Terms, assign = ass, zassign = zass,
     na.action = atrx$na.action, fail = FALSE,
     non.slopes = nrp, interceptRef = kmid,
-    sformula = sformula, zsformula = NULL,
-    pcontrast = pcontrast, npcontrast = NULL
+    sformula = sformula, zsformula = zsformula,
+    pcontrast = pcontrast, npcontrast = npcontrast,
+    # Claude Sonnet 5 2026-11-21          4 lines
+    # ydep: qyde/myde (0 when yde absent) and the (possibly wrapped,
+    # center/scale-baked-in) ytrans deparsed as text -- same convention
+    # as blrm's own cppo=deparse(cppo), to avoid serializing a huge
+    # captured environment; re-hydrated with eval(parse(text=...)) the
+    # same way blrm.r re-hydrates a cached cppo (see borm()'s own file
+    # caching block above).
+    yde = yde, qyde = qyde, myde = myde,
+    ytrans = if (qyde > 0) deparse(ytrans), zbar = zbar
   )
 
   fo <- fit.object
@@ -324,11 +426,28 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
     w <- docon(fo, X, wqrX, pcontrast, main = TRUE, ylev = ylev, pppo = 0L,
                clas = c("borm", "rmsb", "rms"))
     fit.object$Contrast <- w$Contrast
-    fit.object$Contrastt <- w$Contrastt
+    # Claude Sonnet 5 2026-11-22          1 line
+    # docon() returns the QR-transformed contrast under the name C,
+    # not Contrastt (confirmed directly: w$Contrastt is always NULL,
+    # the same pre-existing bug fixed in blrm.r's identical lines).
+    fit.object$Contrastt <- w$C
     d$cn <- w$cn
     d$C <- w$C
     d$cmus <- w$cmus
     d$csds <- w$csds
+  }
+
+  d$cn2 <- 0L
+  d$C2 <- array(0., c(0, p + qyde * myde))
+  d$cmus2 <- d$csds2 <- array(numeric(0))
+  if (length(npcontrast)) {
+    w2 <- bormDoconYdep(fo, X, wqrX, zatr, zTerms, zass, zsformula,
+                        Z, wqrZ, ytransmat, qyde, myde, npcontrast, ylev)
+    fit.object$nContrastt <- w2$C
+    d$cn2 <- w2$cn
+    d$C2 <- w2$C
+    d$cmus2 <- w2$cmus
+    d$csds2 <- w2$csds
   }
 
   ## Need to negate alphas from Stan? No -- borm always uses the
@@ -380,9 +499,17 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
       betas <- matrix(betas, nrow = 1) %*% t(wqrX$Rinv)
       names(betas) <- atr$colnames
       alphas <- alphas - sum(betas * xbar)
+      taus <- NULL
+      if (qyde > 0) {
+        ta <- nam[grep("tau\\[", nam)]
+        bt <- bormYdepBT(parm[ta], qyde, myde, wqrZ$Rinv, zbar, ytransmat)
+        alphas <- alphas - bt$alphaadj
+        taus <- as.vector(bt$tau)
+        names(taus) <- bormYdepNames(colnames(Z), ytransmat, qyde, myde)
+      }
       names(alphas) <- if (nrp == 1) "Intercept" else paste0("y>=", ylev[-1])
       opt <- list(
-        coefficients = c(alphas, betas),
+        coefficients = c(alphas, betas, taus),
         deviance = -2 * switch(backend,
           rstan = g$value,
           cmdstan = g$lp()
@@ -399,7 +526,7 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
 
   debug(1)
   sigmaname <- if (use_mre) c("sigma1", "sigma2") else "sigmag"
-  incpars <- c("alpha", "beta", if (length(cluster)) c("gamma", sigmaname),
+  incpars <- c("alpha", "beta", if (qyde > 0) "tau", if (length(cluster)) c("gamma", sigmaname),
                if (backend == "rstan" & loo) "log_lik")
 
   stime <- system.time({
@@ -473,13 +600,43 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
 
   debug(3)
 
+  # Claude Sonnet 5 2026-11-21          entire block
+  # ydep: back-transform tau draw-by-draw (bormYdepBT()), via the same
+  # q x m / k x m generalization of blrm's own constrained-PPO tau
+  # back-transform documented in bormYdepBT()'s own roxygen. A loop
+  # over draws is the simplest correct approach (qyde, myde are small;
+  # ndraws is at most a few times chains*iter) -- matching blrm's own
+  # per-column loop for its unconstrained PPO tau (see blrm.r's mtaus
+  # block) in spirit, generalized here to loop over draws instead of
+  # over columns since BOTH the transform (Rinv) and the resulting
+  # alpha adjustment vary by draw here, unlike blrm's single point
+  # estimate case.
+  taus <- NULL
+  tauadj <- matrix(0., ndraws, nrp)  # per-draw, per-alpha-column; stays 0 when qyde==0
+  if (qyde > 0) {
+    ta <- nam[grep("tau\\[", nam)]
+    clparm <- c(clparm, ta)
+    tauraw <- draws[, ta, drop = FALSE]
+    taus <- matrix(0., ndraws, qyde * myde)
+    for (i in 1:ndraws) {
+      bt <- bormYdepBT(tauraw[i, ], qyde, myde, wqrZ$Rinv, zbar, ytransmat)
+      taus[i, ] <- as.vector(bt$tau)
+      tauadj[i, ] <- bt$alphaadj
+    }
+    colnames(taus) <- bormYdepNames(colnames(Z), ytransmat, qyde, myde)
+  }
+
+  # alphacorr (length ndraws) is the SAME shift for every alpha column
+  # (X's centering doesn't depend on Y-level); tauadj (ndraws x nrp)
+  # varies by alpha column (Y-level-dependent), so it is subtracted as
+  # a full matrix, not recycled like alphacorr.
   alphacorr <- rowSums(sweep(betas, 2, xbar, "*"))
-  alphas <- sweep(alphas, 1, alphacorr, "-")
+  alphas <- sweep(alphas, 1, alphacorr, "-") - tauadj
 
   colnames(alphas) <- if (nrp == 1) "Intercept" else paste0("y>=", ylev[-1])
   colnames(betas) <- atr$colnames
 
-  draws <- cbind(alphas, betas)
+  draws <- cbind(alphas, betas, taus)
 
   debug(4)
   param <- rbind(mean = colMeans(draws), median = apply(draws, 2, median))
@@ -563,7 +720,11 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
       xqrsd = xqrsd,
       N = n, Ncens1 = Ncens1, Ncens2 = Ncens2, p = p,
       alphas = al, betas = be,
-      xbar = xbar, zbar = NULL,
+      xbar = xbar,
+      # Claude Sonnet 5 2026-11-21          1 line
+      # wqrZ$Rinv (only, not the whole QR object) is needed later by
+      # ydep-aware prediction; NULL (no duplicate entry) when qyde==0.
+      wqrZRinv = if (qyde > 0) wqrZ$Rinv,
       x = if (x) X, y = if (y) Y,
       loo = Loo, lootime = lootime,
       clusterInfo = if (length(cluster)) {
@@ -587,6 +748,352 @@ borm <- function(formula, family = c("logistic", "probit", "loglog", "cloglog", 
   }
   res$rstan <- g
   res
+}
+
+# Claude Sonnet 5 2026-11-21          entire block
+# Internal borm() helpers for the ydep (yde/ytrans) mechanism, used by
+# both the optimizing-mode (single point estimate) and sampling-mode
+# (full posterior draws) branches of borm() itself -- top-level per
+# this package's standing rule that a helper used more than once must
+# not live inside another function's body.
+
+##' Back-Transform a borm() ydep tau Vector/Draw
+##'
+##' Internal helper for [borm()]: back-transforms one posterior draw's (or the optimizing-mode point estimate's) flattened `tau` coefficient vector from the QR-transformed `Z` scale to the original covariate scale, and computes the intercept (`alpha`) adjustment implied by `Z`'s own centering -- the direct generalization, to a `qyde x myde` `tau` matrix and a `k x myde` `ytransmat`, of [blrm()]'s own constrained-PPO `tau` back-transform (`taus <- wqrZ$Rinv %*% taus; alphas <- alphas - d$pposcore[-1] * sum(taus * zbar)`, a `q x 1` `tau` and a length-`k` `pposcore`).
+##' @param tauvec a length `qyde*myde` vector (one posterior draw, or the point estimate), in Stan's own column-major matrix-parameter order (`tau[1,1], tau[2,1], ..., tau[qyde,1], tau[1,2], ...`)
+##' @param qyde number of `yde` predictors
+##' @param myde number of `ytrans` columns
+##' @param Rinv the `qyde x qyde` inverse QR matrix from `selectedQr(Z)`
+##' @param zbar the length-`qyde` vector of `Z`'s original-scale column means from `selectedQr(Z)`
+##' @param ytransmat the `k x myde` `ytrans(ylev)` matrix (the same one passed to Stan)
+##' @return a list with `tau` (the `qyde x myde` back-transformed coefficient matrix) and `alphaadj` (a length-`(k-1)` vector to subtract from `alpha`, one entry per alpha index)
+##' @author Frank Harrell
+##' @noRd
+bormYdepBT <- function(tauvec, qyde, myde, Rinv, zbar, ytransmat) {
+  Tm  <- matrix(tauvec, nrow = qyde, ncol = myde)
+  Tbt <- Rinv %*% Tm
+  zbartau <- as.vector(matrix(zbar, nrow = 1) %*% Tbt)
+  alphaadj <- as.vector(ytransmat[-1, , drop = FALSE] %*% zbartau)
+  list(tau = Tbt, alphaadj = alphaadj)
+}
+
+##' Column Labels for a borm() ytransmat
+##'
+##' Internal helper for [borm()]: labels for `tau`'s columns, using `ytransmat`'s own column names when the user's `ytrans` function supplied them, else generic `ytrans1, ytrans2, ...` labels.
+##' @param ytransmat the `k x myde` `ytrans(ylev)` matrix
+##' @param myde number of `ytrans` columns
+##' @return a length-`myde` character vector
+##' @author Frank Harrell
+##' @noRd
+bormYdepColLab <- function(ytransmat, myde) {
+  cn <- colnames(ytransmat)
+  # Claude Sonnet 5 2026-11-21          1 line
+  # Reject names cbind() auto-infers from a bare-symbol argument (e.g.
+  # ytrans <- function(y) cbind(y, y^2) gives colnames c("y", "") --
+  # confirmed directly), not a deliberate user label; an empty or
+  # duplicated name is diagnostic of this, a fully-named, unique set is
+  # not and is trusted as deliberate.
+  if (!length(cn) || any(cn == "") || anyDuplicated(cn)) cn <- paste0("ytrans", 1:myde)
+  cn
+}
+
+##' Flattened Names for a borm() ydep tau Matrix
+##'
+##' Internal helper for [borm()]: names for `tau`'s flattened (column-major, matching `as.vector()`/Stan's own convention) entries, as `"<Z column> x <ytrans column>"`.
+##' @param Zcolnames column names of the `yde` design matrix `Z`
+##' @param ytransmat the `k x myde` `ytrans(ylev)` matrix
+##' @param qyde number of `yde` predictors
+##' @param myde number of `ytrans` columns
+##' @return a length-`qyde*myde` character vector
+##' @author Frank Harrell
+##' @noRd
+bormYdepNames <- function(Zcolnames, ytransmat, qyde, myde) {
+  paste(rep(Zcolnames, myde), "x", rep(bormYdepColLab(ytransmat, myde), each = qyde))
+}
+
+##' Combined beta+tau Contrast Row Builder for borm()'s npcontrast
+##'
+##' Internal helper for [borm()]: generalizes [docon()]'s single-design-matrix contrast mechanism so that `npcontrast`'s named settings can produce a row spanning BOTH `beta`'s `p` columns and `tau`'s flattened `qyde*myde` columns, letting contrast expressions reference betas, taus, or both -- needed because `beta` and `tau` are mechanically separate Stan parameter blocks, so a single-design-matrix row (as [docon()] builds for `pcontrast`, or as `blrm()`'s own single-column-`tau` `npcontrast` uses) cannot express a quantity like "the effect of a predictor at a given Y value", which is `beta_j + Z_j . tau . ytransmat[y,]` -- necessarily mixing both. `ycut` is read from `pc$ycut` exactly as [docon()] reads it for `blrm()`'s own `cppo`-weighted `npcontrast` (a single scalar applied to every named setting, or a named vector giving a different Y cutoff per named setting); a setting with no `ycut` (absent entirely, or named but missing that particular setting) gets an all-zero tau-part, i.e. a pure-`beta` row -- and symmetrically, two settings sharing the same covariate values but different `ycut` have their `beta`-parts cancel exactly in a difference, giving a pure-`tau` contrast; this is confirmed, not just reasoned through (see `inst/tests/borm-yde.r`'s own npcontrast tests). Each setting's row is QR-transformed individually (`beta`-part via `wqrX$Rinv`, `tau`-part via `wqrZ$Rinv` applied BEFORE the outer-product expansion against `ytransmat`, since `ytransmat`'s row varies per setting via `ycut` and so cannot be factored into one whole-matrix transform applied once at the end, unlike [docon()]'s own single-design-matrix case) -- since matrix right-multiplication is linear, this is mathematically identical to transforming the combined contrast matrix once at the end (confirmed directly against [docon()]'s own existing single-column `ycut`-weighted formula, which this exactly reduces to when `myde=1`), so no further whole-matrix QR-transform step is needed afterward.
+##' @param fo a partially-built fit object (as [docon()] itself builds)
+##' @param X the main-formula design matrix
+##' @param wqrX the QR decomposition of `X`
+##' @param zatr,zTerms,zass,zsformula the `yde` formula's own `Design`/`terms`/`assign`/`sformula`, as computed in [borm()] when building `Z`
+##' @param Z the `yde` design matrix
+##' @param wqrZ the QR decomposition of `Z`
+##' @param ytransmat the `k x myde` `ytrans(ylev)` matrix
+##' @param qyde,myde dimensions of `tau`
+##' @param pc the user-supplied `npcontrast` list
+##' @param ylev vector of distinct ordered Y values/levels
+##' @return a list with `cn`, `C` (already QR-transformed, `p+qyde*myde` columns wide), `cmus`, `csds`
+##' @author Frank Harrell
+##' @noRd
+bormDoconYdep <- function(fo, X, wqrX, zatr, zTerms, zass, zsformula,
+                          Z, wqrZ, ytransmat, qyde, myde, pc, ylev) {
+  nint <- length(ylev) - 1
+  p <- ncol(X)
+  fo$coefficients <- rep(0., nint + p)
+  fo$tau <- numeric(0)
+  fo$draws <- 1L # trick predictrms into bayes=TRUE
+  fo$param <- rbind(mean = rep(0., nint + p), median = rep(0., nint + p))
+  class(fo) <- c("borm", "rmsb", "rms")
+  # fo is a stub for Xcontrast()'s own internal predict() call, not a
+  # complete fit -- see docon()'s identical fix (stanMisc.r) for why
+  # qyde must be forced to 0 here, or predict.borm() misroutes to
+  # bormPredictYdep() on this incomplete object.
+  fo$qyde <- 0L
+
+  foX <- fo
+  foZ <- fo
+  foZ$Design   <- zatr
+  foZ$terms    <- zTerms
+  foZ$assign   <- zass
+  foZ$sformula <- zsformula
+
+  weights <- pc$weights
+  if (!length(weights)) weights <- "equal"
+  expand <- pc$expand
+  if (!length(expand)) expand <- TRUE
+  cmus <- pc$mu
+  csds <- pc$sd
+  con <- pc$contrast
+  if (!length(con)) stop("must include contrast in npcontrast")
+  if (!is.expression(con)) stop("contrast must be expression()")
+  ycut <- pc$ycut
+  pc[c("weights", "expand", "mu", "sd", "contrast", "ycut")] <- NULL
+  cnam <- names(pc)
+  if (!length(cnam) || any(cnam == "")) {
+    stop("predictor setting lists in npcontrast must be named")
+  }
+  ynamed <- length(names(ycut)) > 0
+
+  XC <- Map(
+    function(x, nm) {
+      xrow <- do.call(
+        Xcontrast,
+        list(foX, a = x, weights = weights, expand = expand, Zmatrix = FALSE)
+      )
+      xrow_qr <- xrow %*% wqrX$Rinv
+      yc <- if (ynamed) {
+        if (nm %in% names(ycut)) ycut[[nm]] else NA
+      } else if (length(ycut)) {
+        ycut[1]
+      } else {
+        NA
+      }
+      if (!is.na(yc)) {
+        zrow <- do.call(
+          Xcontrast,
+          list(foZ, a = x, weights = weights, expand = expand, Zmatrix = FALSE)
+        )
+        zrow_qr <- zrow %*% wqrZ$Rinv
+        yidx <- if (all.is.numeric(ylev)) {
+          which(ylev == yc)
+        } else {
+          max((1:length(ylev))[ylev <= yc])
+        }
+        zexp_qr <- matrix(outer(as.vector(zrow_qr), ytransmat[yidx, ]), nrow = 1)
+      } else {
+        zexp_qr <- matrix(0., 1, qyde * myde)
+      }
+      cbind(xrow_qr, zexp_qr)
+    },
+    pc, cnam
+  )
+
+  Contrastt <- do.call(rbind, lapply(con, eval, XC))
+  cn <- nrow(Contrastt)
+  if (!length(cmus)) cmus <- 0.
+  if (!length(csds)) csds <- 100.
+  if (length(cmus) == 1) cmus <- rep(cmus, length = cn)
+  if (length(csds) == 1) csds <- rep(csds, length = cn)
+  if (length(cmus) != cn || length(csds) != cn) {
+    stop(
+      "mismatch between number of contrasts (", cn,
+      "), length of mu (", length(cmus),
+      "), and length of sd (", length(csds), ")"
+    )
+  }
+  list(cn = cn, C = as.array(Contrastt), cmus = as.array(cmus), csds = as.array(csds))
+}
+
+##' Error If a borm() Fit Used yde/ytrans
+##'
+##' Internal helper for [Mean.borm()]/[Quantile.borm()]/[ExProb.borm()]: these delegate entirely to their [blrm()] counterparts, whose logic is hardcoded to a single-column `cppo` and would silently ignore a `yde`/`ytrans` Y-dependent effect rather than erroring -- this stops that from happening silently, until these three functions get their own `yde`-aware implementations (as [predict.borm()] already does for `type='lp'`/`'x'`, via `bormPredictYdep()`).
+##' @param object a [borm()] fit object
+##' @param fname the name of the calling function, for the error message
+##' @return nothing; stops with an error if `object$qyde > 0`
+##' @author Frank Harrell
+##' @noRd
+##' Resolve newdata for a borm() Prediction Call
+##'
+##' Internal helper for [predict.borm()]/`bormPredictYdep()`: finds the data frame to predict at, trying, in order, a named `newdata=` argument, a `predict(fit, d, type=...)`-style POSITIONALLY-passed (unnamed) data frame argument -- the convention [rms::contrast.rms()]'s own internal `pred()` wrapper uses -- and finally [rms::gendata()] built from named covariate-value arguments, matching [rms::Xcontrast()]'s own convention. Confirmed necessary directly: `contrast()` on a `yde`-fitted `borm()` object failed with a `gendata()` error before this fix, since `contrast.rms()` passes its data frame positionally, which a plain `dots$newdata` lookup does not see.
+##' @param object a [borm()] fit object
+##' @param dots the result of `list(...)` from the calling predict method
+##' @return a data frame
+##' @author Frank Harrell
+##' @noRd
+bormGetNewdata <- function(object, dots) {
+  nd <- dots$newdata
+  if (!length(nd)) {
+    nms <- names(dots)
+    unnamed <- if (length(nms)) which(nms == "") else seq_along(dots)
+    dfidx <- unnamed[sapply(unnamed, function(i) is.data.frame(dots[[i]]))]
+    if (length(dfidx)) nd <- dots[[dfidx[1]]]
+  }
+  if (!length(nd)) nd <- do.call(rms::gendata, c(list(object), dots))
+  nd
+}
+
+bormStopIfYdep <- function(object, fname) {
+  qyde <- object$qyde
+  if (length(qyde) && qyde > 0) {
+    stop(
+      fname, " is not yet implemented for a borm() fit using yde/ytrans; ",
+      "use predict(object, type='lp') instead"
+    )
+  }
+}
+
+##' Y-Dependent-Effect-Aware Prediction for a `borm()` Fit Using `yde`/`ytrans`
+##'
+##' Internal helper for [predict.borm()]: implements `type='lp'` (the posterior mean/median point-estimate case, without `cint` or `fun=`) and `type='x'`, generalizing [predict.blrm()]'s own single-column `cppo` logic (`object$cppo`, a scalar `Z*cppo(ycut)` term) to `borm()`'s `q x m` `tau` matrix and `k x m` `ytransmat`: the Y-dependent design contribution for one observation at one Y cutoff is the `q*m`-length vector `as.vector(outer(Z[row,], ytransmat[cutoff row,]))` (in the same column-major order `tau`'s flattened draws/back-transform use -- see [bormYdepBT()]'s own documentation), dotted against the flattened `tau` coefficients. `newdata` is resolved via [rms::gendata()] exactly as [rms::Xcontrast()] does, since [rms::predictrms()]'s own `second=TRUE` mechanism cannot be reused here (it is keyed off `object$pppo`, which `borm()` always sets to 0 so that `blrm()`'s shared `predict`/`Mean`/`Quantile`/`ExProb` code degrades correctly for a non-`yde` `borm()` fit).
+##' @author Frank Harrell
+##' @noRd
+bormPredictYdep <- function(object, ...,
+                            kint, ycut, fun, funint, type,
+                            se.fit, codes, posterior.summary, cint) {
+  if (type %nin% c("lp", "x")) {
+    stop(
+      "type='", type, "' is not yet implemented for a borm() fit using yde/ytrans; ",
+      "only type='lp' and type='x' are currently supported for such fits"
+    )
+  }
+  if (length(fun)) stop("fun= is not yet implemented for a borm() fit using yde/ytrans")
+
+  dots <- list(...)
+  nd <- bormGetNewdata(object, dots)
+
+  X <- rms::predictrms(object, newdata = nd, type = "x")
+  n <- nrow(X)
+
+  zatr <- object$zDesign
+  # Claude Sonnet 5 2026-11-21          entire block
+  # Building Z at predict time needs two fixes to rms::Design(), both
+  # confirmed directly with standalone reproductions, neither of which
+  # is about yde/ytrans logic itself: (1) a data frame containing
+  # columns beyond those yde's own formula references -- e.g. the main
+  # formula's own x alongside yde's x2 -- makes rms::Design() fail
+  # ("program logic error tl") once more than one newdata row is
+  # requested, apparently via an interaction with the active global
+  # datadist registering both variables; fixed by subsetting to only
+  # yde's own variables (all.vars(object$yde)) first. (2) separately,
+  # rms::Design() cannot build contrasts for a categorical predictor
+  # from newdata containing only one of its levels (confirmed: "x2 has
+  # <2 category levels" on a plain 1-row data frame), unlike
+  # predictrms()'s own machinery for the MAIN formula, which reuses
+  # object$Design's stored level information instead of re-deriving it
+  # from newdata; fixed by explicitly releveling factor/character
+  # columns to the full level set seen when yde was fit (zatr$values).
+  nd2 <- bormGetNewdata(object, dots)
+  zvars <- all.vars(object$yde)
+  nd2 <- nd2[, zvars, drop = FALSE]
+  zvalues <- zatr$values
+  for (vn in intersect(names(zvalues), names(nd2))) {
+    if (is.character(nd2[[vn]]) || is.factor(nd2[[vn]])) {
+      nd2[[vn]] <- factor(nd2[[vn]], levels = zvalues[[vn]])
+    }
+  }
+  Zdes   <- rms::Design(nd2, formula = object$yde)
+  zatrx  <- attributes(Zdes)
+  zTerms <- zatrx$terms
+  attr(zTerms, "formula") <- object$yde
+  zmmcolnames <- zatr$mmcolnames
+  Z <- model.matrix(zTerms, Zdes)
+  zalt <- attr(zmmcolnames, "alt")
+  if (!all(zmmcolnames %in% colnames(Z)) && length(zalt)) zmmcolnames <- zalt
+  Z <- Z[, zmmcolnames, drop = FALSE]
+  colnames(Z) <- zatr$colnames
+
+  qyde <- object$qyde
+  myde <- object$myde
+  # ytrans is stored deparsed (object$ytrans = deparse(ytrans) in
+  # borm() itself), the same convention blrm.r uses for cppo, to avoid
+  # serializing a captured environment; re-hydrate it here exactly as
+  # the file-cache-hit block in borm() does.
+  ytrans <- eval(parse(text = object$ytrans))
+  ylevels <- object$ylevels
+  ytransmat <- ytrans(ylevels)
+
+  iref <- object$interceptRef
+  if (!length(kint)) kint <- iref
+  ycutgiven <- length(ycut) > 0
+  if (!ycutgiven) ycut <- ylevels[kint + 1]
+  if (ycutgiven) {
+    if (type == "lp" && length(ycut) > 1) stop('ycut may only be a scalar for type="lp"')
+    # Claude Sonnet 5 2026-11-21          2 lines
+    # kint must be re-derived from ycut when ycut is given, exactly as
+    # predict.blrm() does -- missed on the first pass (confirmed
+    # directly: without this, the alpha/intercept part of lp stayed at
+    # the default reference intercept regardless of ycut, while the
+    # tau/ytransmat part correctly used ycut, giving a wrong lp).
+    kint <- if (all.is.numeric(ylevels)) {
+      which(ylevels == ycut[1]) - 1
+    } else {
+      max((1:length(ylevels))[ylevels <= ycut[1]]) - 1
+    }
+  }
+
+  if (length(ycut) %nin% c(1, n)) {
+    stop("ycut must be of length 1 or the number of requested predictions")
+  }
+  ycut <- rep(ycut, length = n)
+  rowidx <- if (all.is.numeric(ylevels)) {
+    match(ycut, ylevels)
+  } else {
+    sapply(ycut, function(yy) max((1:length(ylevels))[ylevels <= yy]))
+  }
+
+  expandZ <- function(Zrow, ytransrow) as.vector(outer(Zrow, ytransrow))
+  taunam <- bormYdepNames(colnames(Z), ytransmat, qyde, myde)
+
+  if (type == "x") {
+    Zexp <- matrix(0., n, qyde * myde)
+    for (i in 1:n) Zexp[i, ] <- expandZ(Z[i, ], ytransmat[rowidx[i], ])
+    colnames(Zexp) <- taunam
+    return(cbind(X, Zexp))
+  }
+
+  ## type == 'lp' (fun= already guarded against above). Uses the full
+  ## posterior draws (object$draws already carries back-transformed
+  ## alpha/beta/tau -- see borm()'s own draws <- cbind(alphas, betas,
+  ## taus)), mirroring predict.blrm()'s own more general per-draw loop
+  ## (its xb/ztau/r loop), generalized from a single tau column to
+  ## tau's q*m flattened columns via expandZ().
+  alphaname <- if (object$non.slopes == 1) "Intercept" else paste0("y>=", ylevels[-1])
+  draws <- object$draws
+  ndraws <- nrow(draws)
+  Zexp <- matrix(0., n, qyde * myde)
+  for (i in 1:n) Zexp[i, ] <- expandZ(Z[i, ], ytransmat[rowidx[i], ])
+  # predictrms()'s own type='x' output uses model.matrix()'s raw naming
+  # (e.g. "x2b"), not atr$colnames's rms-style naming (e.g. "x2=b"), so
+  # betas must be matched to X positionally (what colnames remain in
+  # draws after removing the alpha and tau columns, in order) rather
+  # than by name -- the same convention blrm.r's own predict.blrm()
+  # uses via matxv() (positional, not name-based).
+  betacols <- setdiff(colnames(draws), c(alphaname, taunam))
+  xb <- X %*% t(draws[, betacols, drop = FALSE]) # n x ndraws
+  zt <- Zexp %*% t(draws[, taunam, drop = FALSE])   # n x ndraws
+  r <- sweep(xb + zt, 2, draws[, alphaname[kint]], "+") # n x ndraws
+
+  if (posterior.summary == "all") {
+    return(t(r))
+  }
+  postsum <- if (posterior.summary == "mean") rowMeans(r) else apply(r, 1, median)
+  if (!cint) {
+    return(postsum)
+  }
+  hpd <- apply(r, 1, HPDint, prob = cint)
+  list(linear.predictors = postsum, lower = hpd[1, ], upper = hpd[2, ])
 }
 
 ##' Compute Indexes of Predictive Accuracy and Their Uncertainties for `borm()`
@@ -919,19 +1426,52 @@ print.borm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
 # identical logic, borm's own S3 methods simply delegate to them.
 ##' Make Predictions from a `borm()` Fit
 ##'
-##' Predict method for [borm()] objects; delegates entirely to [predict.blrm()], which is already link-and-model-structure-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`, with its only `ppo`/`cppo`-specific logic guarded behind fields `borm()` always sets to 0/`NULL`). See [predict.blrm()] for the full set of arguments and their meaning.
+##' Predict method for [borm()] objects. When the fit did not use `yde`/`ytrans`, delegates entirely to [predict.blrm()], which is already link-and-model-structure-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`, with its only `ppo`/`cppo`-specific logic guarded behind fields `borm()` always sets to 0/`NULL`). When the fit did use `yde`/`ytrans`, has its own `yde`-aware implementation for `type='lp'` and `type='x'` (the two most commonly needed, and the building blocks `type='fitted'` etc. use internally); other types, and `fun=`, are not yet implemented for a `yde`-fitted model and raise an informative error rather than silently ignoring the Y-dependent effect, since [predict.blrm()]'s own (hardcoded single-column `cppo`) logic cannot be reused unchanged for `borm()`'s matrix-valued `tau`.
 ##' @param object a [borm()] fit object
-##' @param ... passed to [predict.blrm()]
+##' @param ... passed to [predict.blrm()], or (for a `yde`-fitted model) to [rms::predictrms()]
+##' @param kint see [predict.blrm()]
+##' @param ycut for a `yde`-fitted model, the Y value(s) at which to evaluate the Y-dependent effect; see [blrm()]'s own `ycut` documentation under `predict.blrm`. Defaults to the fit's reference intercept's Y level, exactly as [predict.blrm()] does.
+##' @param fun see [predict.blrm()]; not yet implemented for a `yde`-fitted model (errors if given)
+##' @param funint see [predict.blrm()]
+##' @param type see [predict.blrm()]; for a `yde`-fitted model only `'lp'` and `'x'` are currently implemented (errors otherwise)
+##' @param se.fit see [predict.blrm()]
+##' @param codes see [predict.blrm()]
+##' @param posterior.summary see [predict.blrm()]
+##' @param cint see [predict.blrm()]
 ##' @return see [predict.blrm()]
 ##' @seealso [predict.blrm()]
 ##' @author Frank Harrell
 ##' @method predict borm
 ##' @export
-predict.borm <- function(object, ...) predict.blrm(object, ...)
+predict.borm <- function(object, ...,
+                         kint = NULL, ycut = NULL,
+                         fun = NULL, funint = TRUE,
+                         type = c(
+                           "lp", "fitted", "fitted.ind", "x", "data.frame",
+                           "terms", "cterms", "ccterms", "adjto", "adjto.data.frame",
+                           "model.frame"
+                         ),
+                         se.fit = FALSE, codes = FALSE,
+                         posterior.summary = c("mean", "median", "all"), cint = 0.95) {
+  qyde <- object$qyde
+  if (!length(qyde)) qyde <- 0L
+  if (qyde == 0) {
+    return(predict.blrm(object, ...,
+      kint = kint, ycut = ycut, fun = fun, funint = funint,
+      type = match.arg(type), se.fit = se.fit, codes = codes,
+      posterior.summary = match.arg(posterior.summary), cint = cint
+    ))
+  }
+  bormPredictYdep(object, ...,
+    kint = kint, ycut = ycut, fun = fun, funint = funint,
+    type = match.arg(type), se.fit = se.fit, codes = codes,
+    posterior.summary = match.arg(posterior.summary), cint = cint
+  )
+}
 
 ##' Function Generator for Mean Y for `borm()`
 ##'
-##' Delegates entirely to [Mean.blrm()], which is already link-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`). See [Mean.blrm()] for details.
+##' Delegates entirely to [Mean.blrm()], which is already link-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`). See [Mean.blrm()] for details. Not yet implemented when the fit used `yde`/`ytrans` (errors informatively rather than silently ignoring the Y-dependent effect, since [Mean.blrm()]'s own logic is hardcoded to a single-column `cppo`).
 ##' @param object a [borm()] fit object
 ##' @param ... passed to [Mean.blrm()]
 ##' @return see [Mean.blrm()]
@@ -939,11 +1479,14 @@ predict.borm <- function(object, ...) predict.blrm(object, ...)
 ##' @author Frank Harrell
 ##' @method Mean borm
 ##' @export
-Mean.borm <- function(object, ...) Mean.blrm(object, ...)
+Mean.borm <- function(object, ...) {
+  bormStopIfYdep(object, "Mean.borm")
+  Mean.blrm(object, ...)
+}
 
 ##' Function Generator for Quantiles of Y for `borm()`
 ##'
-##' Delegates entirely to [Quantile.blrm()], which is already link-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`). See [Quantile.blrm()] for details.
+##' Delegates entirely to [Quantile.blrm()], which is already link-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`). See [Quantile.blrm()] for details. Not yet implemented when the fit used `yde`/`ytrans` (errors informatively rather than silently ignoring the Y-dependent effect, since [Quantile.blrm()]'s own logic is hardcoded to a single-column `cppo`).
 ##' @param object a [borm()] fit object
 ##' @param ... passed to [Quantile.blrm()]
 ##' @return see [Quantile.blrm()]
@@ -951,11 +1494,14 @@ Mean.borm <- function(object, ...) Mean.blrm(object, ...)
 ##' @author Frank Harrell
 ##' @method Quantile borm
 ##' @export
-Quantile.borm <- function(object, ...) Quantile.blrm(object, ...)
+Quantile.borm <- function(object, ...) {
+  bormStopIfYdep(object, "Quantile.borm")
+  Quantile.blrm(object, ...)
+}
 
 ##' Exceedance Probability Function Generator for `borm()`
 ##'
-##' Delegates entirely to [ExProb.blrm()], which is already link-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`). See [ExProb.blrm()] for details.
+##' Delegates entirely to [ExProb.blrm()], which is already link-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`). See [ExProb.blrm()] for details. Not yet implemented when the fit used `yde`/`ytrans` (errors informatively rather than silently ignoring the Y-dependent effect, since [ExProb.blrm()]'s own logic is hardcoded to a single-column `cppo`).
 ##' @param object a [borm()] fit object
 ##' @param ... passed to [ExProb.blrm()]
 ##' @return see [ExProb.blrm()]
@@ -963,4 +1509,7 @@ Quantile.borm <- function(object, ...) Quantile.blrm(object, ...)
 ##' @author Frank Harrell
 ##' @method ExProb borm
 ##' @export
-ExProb.borm <- function(object, ...) ExProb.blrm(object, ...)
+ExProb.borm <- function(object, ...) {
+  bormStopIfYdep(object, "ExProb.borm")
+  ExProb.blrm(object, ...)
+}

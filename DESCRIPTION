@@ -1,7 +1,7 @@
 Package: rmsb
 Title: Bayesian Regression Modeling Strategies
-Version: 1.2-0
-Date: 2026-11-14
+Version: 2.0-0
+Date: 2026-11-15
 Authors@R:
     c(person(given = "Frank",
            family = "Harrell",
@@ -21,7 +21,7 @@ Authors@R:
 			       family = "Bates",
 						 role = "ctb",
 						 comment = "write original code for highest posterior density interval that is folded into the HPDint function"))
-Description: A Bayesian companion to the 'rms' package, 'rmsb' provides Bayesian model fitting, post-fit estimation, and graphics.  It implements Bayesian regression models whose fit objects can be processed by 'rms' functions such as 'contrast()', 'summary()', 'Predict()', 'nomogram()', and 'latex()'.  The fitting function currently implemented in the package is 'blrm()' for Bayesian logistic binary and ordinal regression with optional clustering, censoring, and departures from the proportional odds assumption using the partial proportional odds model of Peterson and Harrell (1990) <https://www.jstor.org/stable/2347760>.
+Description: A Bayesian companion to the 'rms' package, 'rmsb' provides Bayesian model fitting, post-fit estimation, and graphics.  It implements Bayesian regression models whose fit objects can be processed by 'rms' functions such as 'contrast()', 'summary()', 'Predict()', 'nomogram()', and 'latex()'.  The fitting function currently implemented in the package is 'blrm()' for Bayesian logistic binary and ordinal regression with optional clustering, censoring, and departures from the proportional odds assumption using the partial proportional odds model of Peterson and Harrell (1990) <https://www.jstor.org/stable/2347760>.  The more general function `borm()` parallels the `rms` package's `orm()` function and implements its 5 link functions, while handling general censoring.
 License: GPL (>= 3)
 Encoding: UTF-8
 URL: https://hbiostat.org/R/rmsb/
