@@ -468,10 +468,24 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
     mod <- suppressMessages(cmdstanr::cmdstan_model(sfile, dir = rmsbdir))
   }
 
+  # Claude Sonnet 5 2026-11-17          2 lines
+  # pppo/cppo are NOT stored on borm()'s own fit object (unlike blrm(),
+  # where they are real, user-facing fields) -- they are blrm()-only
+  # concepts that borm() has no use for (borm()'s own non-PO mechanism
+  # is qyde/ytrans/tau, entirely different fields). Previously stored
+  # here as 0L/NULL placeholders so that blrm()'s shared predict/Mean/
+  # Quantile/ExProb methods (which predict.borm()/Mean.borm()/
+  # Quantile.borm()/ExProb.borm() delegate to for a non-yde fit) would
+  # not crash reading object$pppo with no fallback -- confirmed
+  # directly that predict.blrm() does read object$pppo unconditionally
+  # with no such fallback. Moved to being injected onto a local,
+  # temporary copy of the object at each of those four delegation call
+  # sites instead (see bormBlrmDelegate(), below), so a borm() user
+  # inspecting their own fit object (names(fit), str(fit)) never sees
+  # these blrm-only fields.
   fit.object <- list(
     call = call, fitter = fitter, link = family, family = family,
     yname = yname, ylevels = ylev, freq = numy, mediany = mediany,
-    pppo = 0L, cppo = NULL, # degrades blrm()-shared predict/Mean/Quantile/ExProb code correctly
     Design = atr, zDesign = zatr,
     scale.pred = switch(family,
       logistic = c("log odds", "Odds Ratio"),
@@ -1050,12 +1064,27 @@ bormStopIfYde <- function(object, fname) {
   }
 }
 
-##' Y-Dependent-Effect-Aware Prediction for a `borm()` Fit Using `yde`/`ytrans`
+##' Temporarily Attach blrm()-Only Placeholder Fields for Delegation
 ##'
-##' Internal helper for [predict.borm()]: implements `type='lp'` (the posterior mean/median point-estimate case, without `cint` or `fun=`) and `type='x'`, generalizing [predict.blrm()]'s own single-column `cppo` logic (`object$cppo`, a scalar `Z*cppo(ycut)` term) to `borm()`'s `q x m` `tau` matrix and `k x m` `ytransmat`: the Y-dependent design contribution for one observation at one Y cutoff is the `q*m`-length vector `as.vector(outer(Z[row,], ytransmat[cutoff row,]))` (in the same column-major order `tau`'s flattened draws/back-transform use -- see `bormYdeBT()`'s own documentation), dotted against the flattened `tau` coefficients. `newdata` is resolved via [rms::gendata()] exactly as [rms::Xcontrast()] does, since [rms::predictrms()]'s own `second=TRUE` mechanism cannot be reused here (it is keyed off `object$pppo`, which `borm()` always sets to 0 so that `blrm()`'s shared `predict`/`Mean`/`Quantile`/`ExProb` code degrades correctly for a non-`yde` `borm()` fit).
+##' Internal helper for [predict.borm()]/[Mean.borm()]/[Quantile.borm()]/[ExProb.borm()]: `borm()` does not store `pppo`/`cppo` on its own fit object (they are `blrm()`-only concepts `borm()` has no use for -- its own non-PO mechanism is `qyde`/`ytrans`/`tau`, entirely different fields), but the `blrm()` methods these four functions delegate to for a non-`yde` fit read `object$pppo` unconditionally, with no fallback for it being absent (confirmed directly: [predict.blrm()] does `pppo <- object$pppo` then `if (pppo == 0) ...` with no `length()` guard, which errors on `NULL`). Attaches `pppo = 0L`, `cppo = NULL` to a local copy of `object` for the duration of the delegated call only, leaving the object the user actually holds untouched.
+##' @param object a [borm()] fit object
+##' @return `object`, with `pppo = 0L` and `cppo = NULL` added
 ##' @author Frank Harrell
 ##' @noRd
-bormPredictYde <- function(object, ...,
+bormBlrmDelegate <- function(object) {
+  object$pppo <- 0L
+  object$cppo <- NULL
+  object
+}
+
+##' Y-Dependent-Effect-Aware Prediction for a `borm()` Fit Using `yde`/`ytrans`
+##'
+##' Internal helper for [predict.borm()]: implements `type='lp'` (the posterior mean/median point-estimate case, without `cint` or `fun=`) and `type='x'`, generalizing [predict.blrm()]'s own single-column `cppo` logic (`object$cppo`, a scalar `Z*cppo(ycut)` term) to `borm()`'s `q x m` `tau` matrix and `k x m` `ytransmat`: the Y-dependent design contribution for one observation at one Y cutoff is the `q*m`-length vector `as.vector(outer(Z[row,], ytransmat[cutoff row,]))` (in the same column-major order `tau`'s flattened draws/back-transform use -- see `bormYdeBT()`'s own documentation), dotted against the flattened `tau` coefficients. `newdata` is resolved via [rms::gendata()] exactly as [rms::Xcontrast()] does, since [rms::predictrms()]'s own `second=TRUE` mechanism cannot be reused here (it is keyed off `object$pppo`, a `blrm()`-only field `borm()` does not store on its own fit object -- see [bormBlrmDelegate()] for how `predict.borm()`'s own, separate non-`yde` branch satisfies `predict.blrm()`'s need for it without storing it persistently).
+##' @param Zmatrix for `type='x'`, set to `FALSE` to exclude the Y-dependent (`yde`) columns and return only the ordinary design matrix -- matching [predict.blrm()]'s own `Zmatrix` argument, needed so [rms::Xcontrast()]'s `Zmatrix=FALSE` option (used by its own partial-PO contrast machinery) and [rms::Predict()]'s analogous suppression work correctly for a `yde`-fitted `borm()` object too, not just `blrm()`.
+##' @param zcppo accepted for interface compatibility with [predict.blrm()] only; has no effect here. `blrm()`'s single-column `cppo` has a meaningful "unweighted" form (the raw `Z` columns, vs. `Z*cppo(ycut)`) that `zcppo` toggles between; `borm()`'s `tau` is inherently a `q x m` matrix matching only the fully-expanded, Y-level-weighted cross-product (`Zexp`, what `Zmatrix=TRUE` returns) -- there is no analogous "unweighted" alternative representation to toggle to.
+##' @author Frank Harrell
+##' @noRd
+bormPredictYde <- function(object, ..., Zmatrix = TRUE, zcppo = TRUE,
                             kint, ycut, fun, funint, type,
                             se.fit, codes, posterior.summary, cint) {
   if (type %nin% c("lp", "x")) {
@@ -1071,6 +1100,10 @@ bormPredictYde <- function(object, ...,
 
   X <- rms::predictrms(object, newdata = nd, type = "x")
   n <- nrow(X)
+  # Claude Sonnet 5 2026-11-17          2 lines
+  # Zmatrix=FALSE: matching predict.blrm()'s own early exit, skip the
+  # (expensive) yde/ytrans design-matrix construction below entirely.
+  if (type == "x" && !Zmatrix) return(X)
 
   zatr <- object$zDesign
   # Claude Sonnet 5 2026-11-21          entire block
@@ -1554,11 +1587,13 @@ print.borm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
 # link-and-model-structure-agnostic: they dispatch through
 # object$link + rms::probabilityFamilies (not hardcoded to logistic),
 # and their only ppo/cppo-specific logic is guarded behind
-# `object$pppo > 0`/`length(object$cppo)`, which borm()'s fit object
-# always sets to 0/NULL -- confirmed directly by inspection (no
-## hardcoded "blrm" class check inside any of the four function bodies
-# that would make this unsafe). Rather than duplicate ~400 lines of
-# identical logic, borm's own S3 methods simply delegate to them.
+# `object$pppo > 0`/`length(object$cppo)` -- confirmed directly by
+# inspection (no hardcoded "blrm" class check inside any of the four
+# function bodies that would make this unsafe). borm()'s own fit
+# object does not carry pppo/cppo itself (see bormBlrmDelegate()); the
+# four delegation call sites below attach them to a local copy of the
+# object just for the delegated call. Rather than duplicate ~400 lines
+# of identical logic, borm's own S3 methods simply delegate to them.
 ##' Make Predictions from a `borm()` Fit
 ##'
 ##' Predict method for [borm()] objects. When the fit did not use `yde`/`ytrans`, delegates entirely to [predict.blrm()], which is already link-and-model-structure-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`, with its only `ppo`/`cppo`-specific logic guarded behind fields `borm()` always sets to 0/`NULL`). When the fit did use `yde`/`ytrans`, has its own `yde`-aware implementation for `type='lp'` and `type='x'` (the two most commonly needed, and the building blocks `type='fitted'` etc. use internally); other types, and `fun=`, are not yet implemented for a `yde`-fitted model and raise an informative error rather than silently ignoring the Y-dependent effect, since [predict.blrm()]'s own (hardcoded single-column `cppo`) logic cannot be reused unchanged for `borm()`'s matrix-valued `tau`.
@@ -1591,7 +1626,7 @@ predict.borm <- function(object, ...,
   qyde <- object$qyde
   if (!length(qyde)) qyde <- 0L
   if (qyde == 0) {
-    return(predict.blrm(object, ...,
+    return(predict.blrm(bormBlrmDelegate(object), ...,
       kint = kint, ycut = ycut, fun = fun, funint = funint,
       type = match.arg(type), se.fit = se.fit, codes = codes,
       posterior.summary = match.arg(posterior.summary), cint = cint
@@ -1616,7 +1651,7 @@ predict.borm <- function(object, ...,
 ##' @export
 Mean.borm <- function(object, ...) {
   bormStopIfYde(object, "Mean.borm")
-  Mean.blrm(object, ...)
+  Mean.blrm(bormBlrmDelegate(object), ...)
 }
 
 ##' Function Generator for Quantiles of Y for `borm()`
@@ -1631,7 +1666,7 @@ Mean.borm <- function(object, ...) {
 ##' @export
 Quantile.borm <- function(object, ...) {
   bormStopIfYde(object, "Quantile.borm")
-  Quantile.blrm(object, ...)
+  Quantile.blrm(bormBlrmDelegate(object), ...)
 }
 
 ##' Exceedance Probability Function Generator for `borm()`
@@ -1646,5 +1681,5 @@ Quantile.borm <- function(object, ...) {
 ##' @export
 ExProb.borm <- function(object, ...) {
   bormStopIfYde(object, "ExProb.borm")
-  ExProb.blrm(object, ...)
+  ExProb.blrm(bormBlrmDelegate(object), ...)
 }
