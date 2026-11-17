@@ -175,6 +175,22 @@ functions {
   vector logCDF_cloglog  (vector x) { return log1m_exp(-exp(fmin(x, 700.))); }
   vector logCCDF_cloglog (vector x) { return -exp(fmin(x, 700.)); }
 
+  // Claude Sonnet 5 2026-11-16          6 lines
+  // Per-family inverse CDF (quantile function), each exactly inverting
+  // the CDF the matching pw_log_lik_* branch above actually uses, so
+  // that CDF_family(invCDF_family(p)) == p identically. Needed below to
+  // turn the Dirichlet-prior simplex pi into alpha correctly for every
+  // link -- fixing a bug where alpha was always built with logit(),
+  // correct only for link == 1 (logistic); every other family's
+  // Dirichlet-on-pi prior was silently a prior on a different, composed
+  // quantity (Phi(logit(p)) etc.), not on the baseline category
+  // probabilities it was documented to be.
+  real invCDF_logistic(real p) { return logit(p); }
+  real invCDF_probit  (real p) { return inv_Phi(p); }
+  real invCDF_cauchit (real p) { return tan(pi() * (p - 0.5)); }
+  real invCDF_loglog  (real p) { return -log(-log(p)); }
+  real invCDF_cloglog (real p) { return log(-log1m(p)); }
+
   // ---- logistic/loglog/cloglog: fully vectorized, no loop at all ----
   // e is the same quantity (lp + random-effect contribution) for both
   // the p1 and p2 components of one observation; the ydep contribution
@@ -432,7 +448,7 @@ transformed data {
 
 parameters {
   vector[p] beta;                    // coefficients on X
-  simplex[k] pi;                      // category probabilities at X = 0 (before centering)
+  simplex[k] pi;                      // category probabilities at X = 0 and Z = 0 (both before centering)
   vector[Nc] gamma_raw;                // unscaled per-cluster random effects
   // Exactly one of sigmag or (sigma1, sigma2) is actually used, chosen
   // by use_mre; the other is declared with 0 elements (same idiom
@@ -474,7 +490,29 @@ transformed parameters {
   vector[N] ydeterm1 = rows_dot_product(ZT, ytransmat[ia_p1]);
   vector[N] ydeterm2 = rows_dot_product(ZT, ytransmat[ia2_safe_p1]);
 
-  for (j in 2:k) alpha[j - 1] = logit(sum(pi[j:k])); // predictors are CENTERED
+  // Claude Sonnet 5 2026-11-16          12 lines
+  // Dispatch on link, not hardcoded logit() -- see invCDF_* comment
+  // above. logit() is only the correct inverse CDF when link == 1.
+  // cp is clamped away from exactly 0/1 before any invCDF_* call:
+  // sum(pi[j:k]) is mathematically in (0,1) (pi is a simplex), but
+  // summing up to k-1 of its entries in floating point can round to a
+  // value microscopically outside that interval -- confirmed directly
+  // (a real borm(family='probit') fit, reported by Frank): cp came out
+  // as -4.76837e-16, which inv_Phi's own domain check rejects with
+  // "Probability variable is ... but must be in the interval [0, 1]",
+  // forcing Stan to reject that proposal. logit() never surfaced this
+  // because it has no such check, not because the underlying rounding
+  // didn't happen. 1e-10 is comfortably above that rounding noise and
+  // comfortably below any tail probability borm actually needs to
+  // resolve (down to ~1e-9 in the fits examined so far).
+  for (j in 2:k) {
+    real cp = fmin(fmax(sum(pi[j:k]), 1e-10), 1 - 1e-10); // predictors are CENTERED
+    if      (link == 1) alpha[j - 1] = invCDF_logistic(cp);
+    else if (link == 2) alpha[j - 1] = invCDF_probit(cp);
+    else if (link == 3) alpha[j - 1] = invCDF_loglog(cp);
+    else if (link == 4) alpha[j - 1] = invCDF_cloglog(cp);
+    else                 alpha[j - 1] = invCDF_cauchit(cp);
+  }
 
   if (Nc == 0) {
     gamma_eta = rep_vector(0, N);

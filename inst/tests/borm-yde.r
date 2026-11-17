@@ -102,6 +102,7 @@ co <- f_borm$param["mean", ]
 kint <- which(ylevels == ycutval) - 1
 alphaname <- paste0("y>=", ylevels[-1])[kint]
 ytransmat <- eval(parse(text = f_borm$ytrans))(ylevels)
+if (!is.matrix(ytransmat)) ytransmat <- matrix(ytransmat, ncol = 1)
 manual <- co[alphaname] + co["x"] * 1 + co["x2=b"] * 1 +
   co["x2=b x ytrans1"] * 1 * ytransmat[kint + 1, 1]
 cat("manual lp:", manual, " predict() lp:", lp, " diff:", manual - lp,
@@ -206,3 +207,52 @@ phi  <- predict(f_contr, newdata = data.frame(x = median(x), x2 = "b"), type = "
         predict(f_contr, newdata = data.frame(x = median(x), x2 = "a"), type = "lp", ycut = yc_hi, cint = FALSE)
 cat("ground truth via predict() at ycut=", yc_mid, ":", pref, " (expect match contrast()'s value)\n")
 cat("ground truth via predict() at ycut=", yc_hi, ":", phi, " (expect match contrast()'s value)\n")
+
+## ----------------------------------------------------------------------
+## 8. print.borm()/bormStats() on a yde-fitted model with x=TRUE/y=TRUE.
+## bormStats() builds the linear predictor as cbind(1,X) %*% t(beta),
+## but draws has [alphas, betas, taus] when qyde>0 -- the tau columns
+## must be split out and combined with Z via ytransmat at the
+## reference intercept's Y level (mirroring blrmStats()'s own
+## tauFetch()-based handling of its cppo-weighted tau), not left in
+## with betas. Confirmed directly: print() on a yde-fitted borm()
+## crashed with "non-conformable arguments" in
+## cbind(1,X) %*% t(beta) before this fix (X has p+1 columns, beta
+## had p+1+qyde*myde). Also confirmed numerically: a manual
+## reconstruction of bormStats()'s own lp, using the stored z/ytrans/
+## qyde/myde, matches the difference in that lp between two covariate
+## groups exactly against beta_x + tau %*% ytransmat[reference,].
+## ----------------------------------------------------------------------
+
+cat("\n=== 8. print.borm()/bormStats() on a yde-fitted model ===\n")
+f_print <- borm(y ~ x + x2, yde = ~x2, ytrans = scorefun, family = "logistic", data = d,
+                x = TRUE, y = TRUE,
+                iter = 300, warmup = 150, chains = 1, refresh = 0)
+invisible(capture.output(print(f_print)))
+cat("print(f_print) completed without error\n")
+
+draws <- f_print$draws
+ylevp <- f_print$ylevels
+kmidp <- f_print$interceptRef
+ytransmatp <- eval(parse(text = f_print$ytrans))(ylevp)
+if (!is.matrix(ytransmatp)) ytransmatp <- matrix(ytransmatp, ncol = 1)
+cnp <- colnames(draws)
+taunamp <- grep("ytrans", cnp, value = TRUE)
+betanamp <- setdiff(cnp[-(1:f_print$non.slopes)], taunamp)
+i <- 1
+beta_i <- draws[i, c(cnp[kmidp], betanamp)]
+tau_i <- matrix(draws[i, taunamp], f_print$qyde, f_print$myde)
+etau_i <- tau_i %*% ytransmatp[kmidp + 1, ]
+## Use bormStats()'s own stored real data (f_print$x/$z), not synthetic
+## rows, so this actually exercises what bormStats() itself computes;
+## pick two real observations and subtract out their x contribution
+## (since x differs between them too) to isolate the x2 effect
+Xp <- f_print$x
+Zp <- f_print$z
+lp_manual <- cbind(1, Xp) %*% beta_i + Zp %*% etau_i
+i_x2b <- which(d$x2 == "b")[1]
+i_x2a <- which(d$x2 == "a")[1]
+diffx <- beta_i["x"] * (Xp[i_x2b, "x"] - Xp[i_x2a, "x"])
+cat("manual lp diff minus the x-driven part (isolating the x2 effect):",
+    lp_manual[i_x2b] - lp_manual[i_x2a] - diffx,
+    "  vs beta_x2b + etau:", beta_i["x2=b"] + etau_i, " (expect exact match)\n")

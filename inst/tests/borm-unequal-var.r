@@ -11,12 +11,16 @@ y <- round(2 * y) / 2
 length(unique(y))
 r <- max(abs(range(y)))
 histbackback(split(y, x), brks=seq(-r, r, by=1))
+sopts <- list(adapt_delta=0.995, max_treedepth=15, seed=7)
+# sopts <- NULL
+fi <- function(y) y
 f <- borm(y ~ x, family='probit')
-f <- blrm(y ~ x, ~ x, cppo = function(y) y)
+f1 <- blrm(y ~ x, ~ x, cppo = fi, sampling.args=sopts)
+f1
+f2 <- borm(y ~ x, ~ x, fi, sampling.args=sopts)
+f2
 f <- clm(as.ordered(y) ~ x, scale = ~ x, link = "probit")
 summary(f)
-sopts <- list(adapt_delta=0.995, max_treedepth=15)
-sopts <- NULL
 f <- borm(y ~ x, yde = ~ x, ytrans = function(y) y, family='probit', sampling.args=sopts)
 f <- borm(y ~ x, yde = ~ x, ytrans = function(y) cbind(y=y, y2=y^2), family='probit', sampling.args=sopts)
 f

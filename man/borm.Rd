@@ -6,12 +6,12 @@
 \usage{
 borm(
   formula,
-  family = c("logistic", "probit", "loglog", "cloglog", "cauchit"),
   yde = NULL,
   ytrans = NULL,
   data = environment(formula),
   subset,
   na.action = na.delete,
+  family = c("logistic", "probit", "loglog", "cloglog", "cauchit"),
   conc = 1/(0.8 + 0.35 * max(k, 3)),
   psigma = 1,
   rsdmean = if (psigma == 1) 0 else 1,
@@ -37,23 +37,24 @@ borm(
   debug = FALSE,
   sampling.args = NULL,
   showopt = FALSE,
+  cores_loo = 1,
   ...
 )
 }
 \arguments{
 \item{formula}{an R formula object that can use \code{rms} package enhancements such as the restricted interaction operator, and may include \code{cluster()} and (together with \code{cluster()}) \code{mix_re()} terms}
 
-\item{family}{a character value specifying the distribution family, corresponding to logistic (the default), probit, loglog (\code{exp(-exp(-x))}; extreme value type I/Gumbel maximum), cloglog (\code{1-exp(-exp(x))}; Gumbel minimum), and cauchit (Cauchy) link functions for \code{Prob[Y >= y | X]}, matching \code{\link[rms:orm]{rms::orm()}}'s own \code{family} argument exactly}
-
 \item{yde}{formula specifying the model predictors for which a Y-dependent effect is to be estimated, with no left-hand-side variable, paralleling \code{\link[=blrm]{blrm()}}'s own \code{ppo} argument exactly (including that its predictors may, and usually will, overlap those in \code{formula}). Must be accompanied by \code{ytrans}. If a predictor in \code{yde} is not in \code{formula}, it contributes only a Y-dependent effect, no constant (proportional-odds) one.}
 
-\item{ytrans}{a function of one argument, \code{y}, specifying the shape(s) of the Y-dependent effect(s) for the predictors in \code{yde}, paralleling \code{\link[=blrm]{blrm()}}'s own \code{cppo} argument but generalized to allow more than one shape at once: it is called on the distinct, ordered Y values seen in the data (\code{y}'s own values need not be the complete set, or in any particular order -- \code{ytrans} must work correctly on an arbitrary subset/order of Y values, since it is also called later, e.g. for contrasts, on individual Y values) and must return either a plain vector (one Y-dependent shape) or a matrix with one or more columns (several simultaneous Y-dependent shapes), one row (or value) per element of \code{y}. \code{ytrans}'s result is automatically centered and scaled (independently per column, using its own column means/SDs evaluated over the observed, not just distinct, Y values, exactly paralleling \code{\link[=blrm]{blrm()}}'s own \code{cppo}-centering convention under \code{normcppo=TRUE}) before being used, so \code{ytrans} itself need not do this. A single-column \code{ytrans} applied to a single \code{yde} predictor reduces mathematically to \code{blrm()}'s own \code{cppo} mechanism. Must be accompanied by \code{yde}.}
+\item{ytrans}{a function of one argument, \code{y}, specifying the shape(s) of the Y-dependent effect(s) for the predictors in \code{yde}, paralleling \code{\link[=blrm]{blrm()}}'s own \code{cppo} argument but generalized to allow more than one shape at once: it is called on the distinct, ordered Y values seen in the data (\code{y}'s own values need not be the complete set, or in any particular order -- \code{ytrans} must work correctly on an arbitrary subset/order of Y values, since it is also called later, e.g. for contrasts, on individual Y values) and must return either a plain vector (one Y-dependent shape) or a matrix with one or more columns (several simultaneous Y-dependent shapes), one row (or value) per element of \code{y}. \code{ytrans} is used exactly as written for every purpose a user or \code{borm()}'s own methods will see (storage, \code{bormStats()}, \code{predict.borm()}), with no centering -- so \code{tau}, the coefficient \code{borm()} reports, is directly interpretable as "per unit of \code{ytrans(y)}, per unit of the \code{yde} predictor," independent of the sample means of \code{y}, the \code{yde} predictors, or any other covariate; an earlier version centered \code{ytrans} automatically, which was reversed after confirming directly that it silently distorted the \emph{other}, ordinary (non-\code{yde}) coefficient(s) for any predictor appearing in both \code{yde} and the main formula -- the common case, since a Y-dependent effect is normally an extension of an ordinary effect, not a separate one -- while providing no measurable sampling benefit. Internally (invisible to the user, and not reflected in the stored/reported \code{tau}), \code{ytrans(y)} IS still divided by its own SD over the observed Y values before being given to Stan, purely for numerical safety -- confirmed directly that skipping this is not safe: with no scaling at all, a \code{ytrans} producing values in roughly the hundreds or more (\code{ytrans=function(y) 100*y} on data with \code{y} up to about 10, for example) crashed R outright (a Stan optimizer segfault), while values up to the tens did not. A single-column \code{ytrans} applied to a single \code{yde} predictor reduces mathematically to \code{blrm()}'s own \code{cppo} mechanism. Must be accompanied by \code{yde}.}
 
 \item{data}{a data frame; defaults to using objects from the calling environment}
 
 \item{subset}{a logical vector or integer subscript vector specifying which subset of data should be used}
 
 \item{na.action}{default is \code{na.delete} to remove missings and report on them}
+
+\item{family}{a character value specifying the distribution family, corresponding to logistic (the default), probit, loglog (\code{exp(-exp(-x))}; extreme value type I/Gumbel maximum), cloglog (\code{1-exp(-exp(x))}; Gumbel minimum), and cauchit (Cauchy) link functions for \code{Prob[Y >= y | X]}, matching \code{\link[rms:orm]{rms::orm()}}'s own \code{family} argument exactly}
 
 \item{conc}{the Dirichlet distribution concentration parameter for the prior distribution of cell probabilities at covariate means, with the same default as \code{\link[=blrm]{blrm()}}'s own \code{conc} argument: the reciprocal of 0.8 + 0.35 max(k, 3) where k is the number of Y categories. For optimizing, the concentration parameter is always 1.0, to obtain results close to the MLE for providing the posterior mode.}
 
@@ -63,7 +64,7 @@ borm(
 
 \item{rsdsd}{applies only to \code{psigma=1} and is the scale parameter for the half-t distribution for the random-intercept SD (or \code{sigma1}), defaulting to 1. When \code{mix_re} is used, \code{rsdsd} is also reused, regardless of \code{psigma}, as the scale of a \code{normal(0, rsdsd)} prior for \code{sigma2} (which, unlike \code{sigma1}, may be negative) -- a reasonable default rather than something \code{orm.rfit()} (rms internal) itself specifies, since that function is a pure MLE with no prior on \code{sigma2} at all.}
 
-\item{tausd}{the prior SD for a \code{normal(0, tausd)} prior placed independently on every entry of \code{tau}, the \code{ydep} coefficient matrix (one row per \code{yde} predictor, one column per \code{ytrans} column); ignored when \code{yde}/\code{ytrans} are not given.}
+\item{tausd}{the prior SD for a \code{normal(0, tausd)} prior placed independently on every entry of \code{tau}, the \code{ydep} coefficient matrix (one row per \code{yde} predictor, one column per \code{ytrans} column); ignored when \code{yde}/\code{ytrans} are not given. Specified on a RAW, interpretable, dataset-invariant basis -- one unit of a \code{yde} predictor, one SD of \code{ytrans(y)} over the observed Y values -- not on the internal (QR-rotated, further-scaled) basis \code{tau} is actually sampled on; \code{borm()} converts it internally. This matters because the OLD convention (applying \code{tausd} directly as the internal SD) was not portable across datasets: the same number implied a very different effective prior depending on \code{y}'s own raw units, confirmed directly by comparing datasets with \code{y} on scales differing by 100-fold. The default, 10, is a round, moderate choice on this new basis, clear of the (robustly confirmed) region below about 1 where \code{tau} gets visibly shrunk toward 0 -- it is NOT the result of tuning against NUTS sampling efficiency (leapfrog/treedepth counts): those were found, on closer inspection, to be chaotically sensitive to \code{tausd} at a resolution far finer than any such tuning could resolve (confirmed directly: a 0.001\% change in \code{tausd} swung total leapfrog steps between roughly 200,000 and 350,000, reproducibly), so no specific number can honestly be presented as minimizing them. For \code{qyde=1} (every case validated here) the raw-to-internal conversion is exact; for more than one \code{yde} predictor it uses a reasonable but not independently validated generalization (see the code comment at its computation).}
 
 \item{pcontrast}{a list specifying contrasts that are to be given Gaussian prior distributions, with exactly the syntax and semantics of \code{\link[=blrm]{blrm()}}'s own \code{pcontrast} argument; see its documentation for full details and examples.}
 
@@ -81,7 +82,7 @@ borm(
 
 \item{progress}{see \code{refresh}. Defaults to \code{''} if \code{refresh = 0}.}
 
-\item{x}{set to \code{FALSE} to not store the design matrix in the fit. \code{x=TRUE} is needed if running \code{bormStats} for example.}
+\item{x}{set to \code{FALSE} to not store the design matrix in the fit. \code{x=TRUE} is needed if running \code{bormStats}/\code{print.borm} for example -- when \code{yde}/\code{ytrans} are also given, \code{x=TRUE} additionally stores \code{z}, the \code{yde} design matrix, which \code{bormStats} also needs.}
 
 \item{y}{set to \code{FALSE} to not store the response variable in the fit}
 
@@ -101,9 +102,11 @@ borm(
 
 \item{debug}{set to \code{TRUE} to output timing and progress information to /tmp/debug.txt}
 
-\item{sampling.args}{a list containing parameters to pass to \code{\link[rstan:sampling]{rstan::sampling()}} or to the \code{cmdstanr} \code{sample} function, other than \verb{iter, warmup, chains, refresh, init}, which are already arguments to \code{borm}. A good use of this is \code{sampling.args=list(seed=3)} to get reproducible sampling.}
+\item{sampling.args}{a list containing parameters to pass to \code{\link[rstan:sampling]{rstan::sampling()}} or to the \code{cmdstanr} \code{sample} function, other than \verb{iter, warmup, chains, refresh, init}, which are already arguments to \code{borm}. A good use of this is \code{sampling.args=list(seed=3)} to get reproducible sampling. If Stan reports many divergent transitions -- which can happen for near-separated data, e.g. two groups whose Y distributions barely overlap -- try \code{sampling.args=list(control=list(adapt_delta=0.995, max_treedepth=15))} (for \code{rstan}; \code{cmdstanr}'s \code{sample()} takes \code{adapt_delta}/\code{max_treedepth} directly rather than nested in \code{control}) before concluding the model itself is wrong: in one such case this cut divergent transitions by about 85\% with no change to the model or data. This is not \code{borm()}'s own default because it roughly doubles sampling time on an otherwise well-behaved fit for no benefit (confirmed directly: 2.4x slower, identical zero divergences, on ordinary non-separated data) -- raise it only when you actually see divergence warnings.}
 
 \item{showopt}{set to \code{TRUE} to show Stan optimizer output}
+
+\item{cores_loo}{number of cores for \code{\link[loo:loo]{loo::loo()}}'s own internal Pareto-smoothing computation (passed as its \code{cores} argument, for both backends). Defaults to \code{1}, not to the number of cores \code{options('mc.cores')} may be set to for other purposes (e.g. parallelizing chains), because \code{loo()} tries to fork the R session whenever \code{cores > 1}, and forking is unavailable in some environments -- e.g. the Positron IDE -- causing \code{loo()} to fail with an uninformative "loo failed" warning until that error is actually surfaced. Increase this only when you know forking is safe in your environment.}
 
 \item{...}{passed to \code{\link[rstan:optimizing]{rstan::optimizing()}} or the \code{cmdstanr} optimizing function. \code{sampling.args} is usually used instead.}
 }
