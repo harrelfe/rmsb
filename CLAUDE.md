@@ -124,24 +124,24 @@ implementation. Treat `rms` as read-only unless Frank says otherwise.
   is large. Do not add alternatives.
 - Implements `mix_re` to augment `cluster`, which can be brought over from
   `blrm`. Read how `blrm` does `cluster`/random effects first.
-- Implements `ydep` (below).
+- Implements `yde` (below).
 - Same censoring mechanism as `orm`.
 
-### `ydep` specification (borm only; not in `blrm` yet)
+### `yde` specification (borm only; not in `blrm` yet)
 
 - `cppo` in `blrm` is a function of Y that gives one scalar
   non-proportional-odds parameter per predictor in `ppo`.
-- `ydep` is the analog of `cppo` that returns a matrix instead of a scalar,
+- `yde` is the analog of `cppo` that returns a matrix instead of a scalar,
   giving more than one non-proportional-odds parameter per predictor
   parameter, i.e. a Y-dependent effect shape per predictor.
 - The predictors it applies to are specified in the `ppo` argument, which is
   a formula object (partial proportional odds).
-- `blrm` is unaffected. Do not add `ydep` to `blrm`. Design the data
+- `blrm` is unaffected. Do not add `yde` to `blrm`. Design the data
   structures and Stan interface in Phase 1 so that Phase 2 does not require
   undoing work (e.g. pass the Y-dependent design as a matrix block with a
   width, even if the width is 1 for `cppo`).
 - Open design questions to settle with Frank before coding: how the matrix
-  columns are parameterized and given priors, how `ydep` interacts with the
+  columns are parameterized and given priors, how `yde` interacts with the
   `ormidx` subscripts and with censored observations, and how `contrast`/
   `Predict`/`summary` should report a Y-dependent effect.
 
@@ -150,4 +150,4 @@ implementation. Treat `rms` as read-only unless Frank says otherwise.
 - That `blrm` lacks or has censoring support, `cluster`, `mix_re`, or
   `ormidx` use. Check the code and report.
 - That a Stan change is faster or more accurate. Measure it.
-- Details of the original `ydep` design beyond what is written here. Ask.
+- Details of the original `yde` design beyond what is written here. Ask.

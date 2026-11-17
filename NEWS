@@ -8,7 +8,7 @@ Changes for 2.0-0 (2026-11-17)
     posterior density intervals, following rms::orm()'s own censoring
     rules. See web/R/rmsb/borm_development.md for the full development
     history.
-  * borm(): new ydep mechanism (yde/ytrans arguments) for Y-dependent
+  * borm(): new yde/ytrans mechanism for Y-dependent
     (non-proportional-odds) effects, generalizing blrm()'s own ppo/cppo
     to allow more than one Y-dependent shape at once, with a combined
     beta+tau npcontrast for the Y-dependent effect. tausd, the prior SD

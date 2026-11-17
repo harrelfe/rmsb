@@ -32,10 +32,10 @@ docon <- function(fo, X, wqr, pc, main, ylev, pppo, clas) {
   # predict(fit, d, type='x') call to work), not a complete fit --
   # but it still inherits qyde from the real fit object if yde is
   # active, and predict.borm() dispatches on qyde>0 to its own
-  # yde-aware bormPredictYdep(), which assumes a COMPLETE fit object
+  # yde-aware bormPredictYde(), which assumes a COMPLETE fit object
   # (object$draws, object$zDesign, etc.) and fails on a stub
   # (confirmed directly: Xcontrast's internal predict() call error'd
-  # inside bormPredictYdep when docon() was used for a yde-active
+  # inside bormPredictYde when docon() was used for a yde-active
   # borm() fit's own plain pcontrast). Forcing qyde=0 here makes
   # predict.borm() correctly treat this stub as the plain case and
   # delegate straight to predict.blrm(), exactly like pppo/cppo are

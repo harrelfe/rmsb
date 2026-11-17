@@ -1,12 +1,12 @@
 ##' Bayesian Ordinal Regression
 ##'
-##' Uses `rstan` with pre-compiled Stan code, or `cmdstan`, to get posterior draws of parameters from a Bayesian ordinal (or binary) cumulative probability regression model, with a choice of 5 link families -- `borm()` is to [blrm()] as [rms::orm()] is to [rms::lrm()]: it generalizes the single (logistic) link that `blrm()` implements to all of the link families `orm()` supports, and is designed, like `orm()`, to scale to a very large number of distinct Y values.  Unlike `blrm()`, `borm()` does not implement the partial proportional odds model (`ppo`/`cppo`) itself; `blrm()` remains the function to use for that. Instead `borm()` implements `ydep`, a more general Y-dependent effect generalization that plays `cppo`'s role: `yde` (paralleling `ppo`) identifies which predictors get a Y-dependent effect, and `ytrans` (paralleling `cppo`, but returning a matrix of one or more columns instead of a single score) specifies the shape(s) of that dependency. A single-column `ytrans` with a single `yde` predictor reduces mathematically to `blrm()`'s own `cppo` mechanism.
+##' Uses `rstan` with pre-compiled Stan code, or `cmdstan`, to get posterior draws of parameters from a Bayesian ordinal (or binary) cumulative probability regression model, with a choice of 5 link families -- `borm()` is to [blrm()] as [rms::orm()] is to [rms::lrm()]: it generalizes the single (logistic) link that `blrm()` implements to all of the link families `orm()` supports, and is designed, like `orm()`, to scale to a very large number of distinct Y values.  Unlike `blrm()`, `borm()` does not implement the partial proportional odds model (`ppo`/`cppo`) itself; `blrm()` remains the function to use for that. Instead `borm()` implements a more general Y-dependent effect mechanism that plays `cppo`'s role, via two new arguments: `yde` (paralleling `ppo`) identifies which predictors get a Y-dependent effect, and `ytrans` (paralleling `cppo`, but returning a matrix of one or more columns instead of a single score) specifies the shape(s) of that dependency. A single-column `ytrans` with a single `yde` predictor reduces mathematically to `blrm()`'s own `cppo` mechanism.
 ##'
 ##' The Stan code internally uses a Dirichlet prior on the multinomial (category) probabilities at the predictor means, inducing a prior for the intercepts, exactly as [blrm()]'s own default (`iprior=0`) does -- `borm()` does not offer `blrm()`'s other two intercept-prior choices, since simulations showed they slow sampling badly once the number of distinct Y values is large, the regime `borm()` is specifically meant for.  Likewise, no data-dependent conditionals appear in the Stan code at all: censoring is handled entirely through subscripts precomputed once in R by [rms::ormIdx()] (the same routine [rms::orm.fit()] uses), not through per-observation branching in Stan.
 ##'
 ##' Design matrix columns are centered and QR-orthogonalized (via `rmsb`'s internal `selectedQr()`, the identical mechanism [blrm()] uses) before being handed to the Stan code, so that highly collinear columns do not hinder posterior sampling; **this transformation is done entirely in R, not in the Stan code**, which receives and fits `beta` on the already-transformed scale and knows nothing of the original covariate scale. Parameters are transformed back to the original data scale before being returned. Stan diagnostic output (e.g. from [stanDx()] or [stanGet()]) will show intercepts and coefficients on the centered/QR-transformed scale; everything `borm()` itself returns and prints is on the original, uncentered scale.
 ##'
-##' As with [blrm()], priors on regression coefficients (`beta`) are specified through contrasts, via `pcontrast`, rather than directly; see [blrm()]'s own documentation for the full `pcontrast` syntax, which `borm()` reuses unchanged (contrasts on `beta` alone). `tau` (the `ydep` coefficient matrix, present only when `yde`/`ytrans` are given) gets a single default prior, `normal(0, tausd)` independently on every entry, which `npcontrast` can override/augment for specific contrasts -- but unlike `blrm()`'s own `npcontrast` (which can only reference `tau`), `borm()`'s `npcontrast` can reference `beta`, `tau`, or both in the same contrast, since a Y-dependent effect is a combination of the two (`beta_j + Z_j . tau . ytransmat[y,]`, the effect of predictor `j` at Y value `y`). Each named predictor-setting list in `npcontrast` may include `ycut`, the Y value at which to evaluate that setting's `tau` contribution (see `pcontrast`'s own documentation for the general named-setting-list/`contrast=expression()` syntax, which is otherwise identical); a setting with no `ycut` contributes a pure-`beta` row, letting simple contrasts reduce to exactly the pure-`beta` or pure-`tau` case with no special syntax -- e.g. two settings sharing the same covariate values but different `ycut` have their `beta` parts cancel exactly in a difference, giving a contrast purely on the Y-dependent effect.
+##' As with [blrm()], priors on regression coefficients (`beta`) are specified through contrasts, via `pcontrast`, rather than directly; see [blrm()]'s own documentation for the full `pcontrast` syntax, which `borm()` reuses unchanged (contrasts on `beta` alone). `tau` (the `yde` coefficient matrix, present only when `yde`/`ytrans` are given) gets a single default prior, `normal(0, tausd)` independently on every entry, which `npcontrast` can override/augment for specific contrasts -- but unlike `blrm()`'s own `npcontrast` (which can only reference `tau`), `borm()`'s `npcontrast` can reference `beta`, `tau`, or both in the same contrast, since a Y-dependent effect is a combination of the two (`beta_j + Z_j . tau . ytransmat[y,]`, the effect of predictor `j` at Y value `y`). Each named predictor-setting list in `npcontrast` may include `ycut`, the Y value at which to evaluate that setting's `tau` contribution (see `pcontrast`'s own documentation for the general named-setting-list/`contrast=expression()` syntax, which is otherwise identical); a setting with no `ycut` contributes a pure-`beta` row, letting simple contrasts reduce to exactly the pure-`beta` or pure-`tau` case with no special syntax -- e.g. two settings sharing the same covariate values but different `ycut` have their `beta` parts cancel exactly in a difference, giving a contrast purely on the Y-dependent effect.
 ##'
 ##' `borm()` implements a single-level hierarchical random intercept for repeated-measures/clustered data via `cluster()` in the model formula, exactly as [blrm()] does, and additionally implements the dual-sigma `mix_re` extension to that random intercept (from `orm.rfit()`, `rms`'s internal, undocumented random-intercept fitter) via a `mix_re()` term in the formula (used together with `cluster()`), exactly as [rms::orm()] does -- see [rms::orm.fit()]'s own documentation, under `mre`, for the full statistical description of this extension. `mix_re` is not a `borm()` argument; it is extracted from the formula the same way `cluster` is.
 ##'
@@ -22,13 +22,13 @@
 ##' @param subset a logical vector or integer subscript vector specifying which subset of data should be used
 ##' @param na.action default is `na.delete` to remove missings and report on them
 ##' @param family a character value specifying the distribution family, corresponding to logistic (the default), probit, loglog (`exp(-exp(-x))`; extreme value type I/Gumbel maximum), cloglog (`1-exp(-exp(x))`; Gumbel minimum), and cauchit (Cauchy) link functions for `Prob[Y >= y | X]`, matching [rms::orm()]'s own `family` argument exactly
-##' @param tausd the prior SD for a `normal(0, tausd)` prior placed independently on every entry of `tau`, the `ydep` coefficient matrix (one row per `yde` predictor, one column per `ytrans` column); ignored when `yde`/`ytrans` are not given. Specified on a RAW, interpretable, dataset-invariant basis -- one unit of a `yde` predictor, one SD of `ytrans(y)` over the observed Y values -- not on the internal (QR-rotated, further-scaled) basis `tau` is actually sampled on; `borm()` converts it internally. This matters because the OLD convention (applying `tausd` directly as the internal SD) was not portable across datasets: the same number implied a very different effective prior depending on `y`'s own raw units, confirmed directly by comparing datasets with `y` on scales differing by 100-fold. The default, 10, is a round, moderate choice on this new basis, clear of the (robustly confirmed) region below about 1 where `tau` gets visibly shrunk toward 0 -- it is NOT the result of tuning against NUTS sampling efficiency (leapfrog/treedepth counts): those were found, on closer inspection, to be chaotically sensitive to `tausd` at a resolution far finer than any such tuning could resolve (confirmed directly: a 0.001% change in `tausd` swung total leapfrog steps between roughly 200,000 and 350,000, reproducibly), so no specific number can honestly be presented as minimizing them. For `qyde=1` (every case validated here) the raw-to-internal conversion is exact; for more than one `yde` predictor it uses a reasonable but not independently validated generalization (see the code comment at its computation).
+##' @param tausd the prior SD for a `normal(0, tausd)` prior placed independently on every entry of `tau`, the `yde` coefficient matrix (one row per `yde` predictor, one column per `ytrans` column); ignored when `yde`/`ytrans` are not given. Specified on a RAW, interpretable, dataset-invariant basis -- one unit of a `yde` predictor, one SD of `ytrans(y)` over the observed Y values -- not on the internal (QR-rotated, further-scaled) basis `tau` is actually sampled on; `borm()` converts it internally. This matters because the OLD convention (applying `tausd` directly as the internal SD) was not portable across datasets: the same number implied a very different effective prior depending on `y`'s own raw units, confirmed directly by comparing datasets with `y` on scales differing by 100-fold. The default, 10, is a round, moderate choice on this new basis, clear of the (robustly confirmed) region below about 1 where `tau` gets visibly shrunk toward 0 -- it is NOT the result of tuning against NUTS sampling efficiency (leapfrog/treedepth counts): those were found, on closer inspection, to be chaotically sensitive to `tausd` at a resolution far finer than any such tuning could resolve (confirmed directly: a 0.001% change in `tausd` swung total leapfrog steps between roughly 200,000 and 350,000, reproducibly), so no specific number can honestly be presented as minimizing them. For `qyde=1` (every case validated here) the raw-to-internal conversion is exact; for more than one `yde` predictor it uses a reasonable but not independently validated generalization (see the code comment at its computation).
 ##' @param conc the Dirichlet distribution concentration parameter for the prior distribution of cell probabilities at covariate means, with the same default as [blrm()]'s own `conc` argument: the reciprocal of 0.8 + 0.35 max(k, 3) where k is the number of Y categories. For optimizing, the concentration parameter is always 1.0, to obtain results close to the MLE for providing the posterior mode.
 ##' @param psigma defaults to 1 for a half-t distribution with 4 d.f., location parameter `rsdmean` and scale parameter `rsdsd`, for the random-intercept SD (or, when `mix_re` is used, for `sigma1`). Set `psigma=2` to use the exponential distribution instead.
 ##' @param rsdmean the assumed mean of the prior distribution of the random-intercept SD (or of `sigma1` when `mix_re` is used). When `psigma=2` this is the mean of an exponential distribution and defaults to 1. When `psigma=1` this is the mean of the half-t distribution and defaults to zero.
 ##' @param rsdsd applies only to `psigma=1` and is the scale parameter for the half-t distribution for the random-intercept SD (or `sigma1`), defaulting to 1. When `mix_re` is used, `rsdsd` is also reused, regardless of `psigma`, as the scale of a `normal(0, rsdsd)` prior for `sigma2` (which, unlike `sigma1`, may be negative) -- a reasonable default rather than something `orm.rfit()` (rms internal) itself specifies, since that function is a pure MLE with no prior on `sigma2` at all.
 ##' @param pcontrast a list specifying contrasts that are to be given Gaussian prior distributions, with exactly the syntax and semantics of [blrm()]'s own `pcontrast` argument; see its documentation for full details and examples.
-##' @param npcontrast a list specifying contrasts on `tau` (the `ydep` coefficient matrix), `beta`, or both, to be given Gaussian prior distributions, with the same named-predictor-setting-list/`contrast=expression()` syntax as `pcontrast` (see [blrm()]'s own `pcontrast` documentation), plus an optional `ycut` -- a single Y value applied to every named setting, or a named vector/list giving a different Y value per named setting -- specifying the Y value at which each setting's `tau` contribution is evaluated; a setting with no `ycut` contributes a pure-`beta` row. Requires `yde`/`ytrans` to be given; it is an error to supply `npcontrast` otherwise.
+##' @param npcontrast a list specifying contrasts on `tau` (the `yde` coefficient matrix), `beta`, or both, to be given Gaussian prior distributions, with the same named-predictor-setting-list/`contrast=expression()` syntax as `pcontrast` (see [blrm()]'s own `pcontrast` documentation), plus an optional `ycut` -- a single Y value applied to every named setting, or a named vector/list giving a different Y value per named setting -- specifying the Y value at which each setting's `tau` contribution is evaluated; a setting with no `ycut` contributes a pure-`beta` row. Requires `yde`/`ytrans` to be given; it is an error to supply `npcontrast` otherwise.
 ##' @param backend set to `cmdstan` to use `cmdstan` through the R `cmdstanr` package instead of the default `rstan`. You can also specify this with a global option `rmsb.backend`.
 ##' @param iter number of posterior samples per chain for [rstan::sampling()] to run, counting warmups
 ##' @param warmup number of warmup iterations to discard. Default is `iter`/2.
@@ -249,7 +249,7 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
 
   # Claude Sonnet 5 2026-11-16          entire block
   # ytrans's own CENTERING is dropped (ytransmat, the matrix stored in
-  # the fit object and used by bormStats()/predict.borm()/bormYdepBT()'s
+  # the fit object and used by bormStats()/predict.borm()/bormYdeBT()'s
   # final back-transform, is ytrans(ylev) exactly as the user wrote it,
   # with no centering). Confirmed directly (borm-unequal-var.r example):
   # centering ytrans's own columns by their mean over the observed Y
@@ -275,15 +275,15 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
   # of ytrans() over the observed, not just distinct, Y values, matching
   # blrm's own cppoy <- cppo(ylev[Y[,1]]) convention), kept numerically
   # safe regardless of ytrans's own units -- while the back-transformed
-  # tau (bormYdepBT(), below) is divided by this SAME yscale before
+  # tau (bormYdeBT(), below) is divided by this SAME yscale before
   # being stored, so it remains exactly "per unit of Z, per unit of the
   # user's own ytrans(y)" -- independent of X's, Z's, or Y's sample
   # means, and now also independent of whatever arbitrary scale ytrans
   # itself happens to produce. ytransmat4stan is used ONLY for Stan's
-  # own data and for bormYdepBT()'s own alphaadj computation (which must
+  # own data and for bormYdeBT()'s own alphaadj computation (which must
   # match whatever scale Stan actually used); ytransmat (unscaled) is
   # the one stored/returned and used everywhere else (bormStats(),
-  # predict.borm(), bormDoconYdep()'s own prior construction aside --
+  # predict.borm(), bormDoconYde()'s own prior construction aside --
   # see its own call site below, which needs the Stan-matching scale).
   myde <- 0L
   ytransmat <- matrix(0., length(ylev), 0)
@@ -321,7 +321,7 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
     # a "per SD of ytrans(y)" basis removes that dataset-dependence.
     # Only Z's own QR rotation needs undoing here (a pure artifact of
     # that parameterization, scaling as 1/sqrt(n), with no real-world
-    # meaning) -- done via Rinv, exactly paralleling bormYdepBT()'s own
+    # meaning) -- done via Rinv, exactly paralleling bormYdeBT()'s own
     # back-transform, but WITHOUT a yscale divide this time, since
     # yscale is already the right normalization to keep, not undo.
     # NOTE: an earlier version of this comment additionally claimed a
@@ -484,7 +484,7 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
     sformula = sformula, zsformula = zsformula,
     pcontrast = pcontrast, npcontrast = npcontrast,
     # Claude Sonnet 5 2026-11-21          4 lines
-    # ydep: qyde/myde (0 when yde absent) and the (possibly wrapped,
+    # yde: qyde/myde (0 when yde absent) and the (possibly wrapped,
     # center/scale-baked-in) ytrans deparsed as text -- same convention
     # as blrm's own cppo=deparse(cppo), to avoid serializing a huge
     # captured environment; re-hydrated with eval(parse(text=...)) the
@@ -515,7 +515,7 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
   d$C2 <- array(0., c(0, p + qyde * myde))
   d$cmus2 <- d$csds2 <- array(numeric(0))
   if (length(npcontrast)) {
-    w2 <- bormDoconYdep(fo, X, wqrX, zatr, zTerms, zass, zsformula,
+    w2 <- bormDoconYde(fo, X, wqrX, zatr, zTerms, zass, zsformula,
                         Z, wqrZ, ytransmat4stan, qyde, myde, npcontrast, ylev)
     fit.object$nContrastt <- w2$C
     d$cn2 <- w2$cn
@@ -576,10 +576,10 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
       taus <- NULL
       if (qyde > 0) {
         ta <- nam[grep("tau\\[", nam)]
-        bt <- bormYdepBT(parm[ta], qyde, myde, wqrZ$Rinv, zbar, ytransmat4stan, yscale)
+        bt <- bormYdeBT(parm[ta], qyde, myde, wqrZ$Rinv, zbar, ytransmat4stan, yscale)
         alphas <- alphas - bt$alphaadj
         taus <- as.vector(bt$tau)
-        names(taus) <- bormYdepNames(colnames(Z), ytransmat, qyde, myde)
+        names(taus) <- bormYdeNames(colnames(Z), ytransmat, qyde, myde)
       }
       names(alphas) <- if (nrp == 1) "Intercept" else paste0("y>=", ylev[-1])
       opt <- list(
@@ -684,9 +684,9 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
   debug(3)
 
   # Claude Sonnet 5 2026-11-21          entire block
-  # ydep: back-transform tau draw-by-draw (bormYdepBT()), via the same
+  # yde: back-transform tau draw-by-draw (bormYdeBT()), via the same
   # q x m / k x m generalization of blrm's own constrained-PPO tau
-  # back-transform documented in bormYdepBT()'s own roxygen. A loop
+  # back-transform documented in bormYdeBT()'s own roxygen. A loop
   # over draws is the simplest correct approach (qyde, myde are small;
   # ndraws is at most a few times chains*iter) -- matching blrm's own
   # per-column loop for its unconstrained PPO tau (see blrm.r's mtaus
@@ -702,11 +702,11 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
     tauraw <- draws[, ta, drop = FALSE]
     taus <- matrix(0., ndraws, qyde * myde)
     for (i in 1:ndraws) {
-      bt <- bormYdepBT(tauraw[i, ], qyde, myde, wqrZ$Rinv, zbar, ytransmat4stan, yscale)
+      bt <- bormYdeBT(tauraw[i, ], qyde, myde, wqrZ$Rinv, zbar, ytransmat4stan, yscale)
       taus[i, ] <- as.vector(bt$tau)
       tauadj[i, ] <- bt$alphaadj
     }
-    colnames(taus) <- bormYdepNames(colnames(Z), ytransmat, qyde, myde)
+    colnames(taus) <- bormYdeNames(colnames(Z), ytransmat, qyde, myde)
   }
 
   # alphacorr (length ndraws) is the SAME shift for every alpha column
@@ -814,7 +814,7 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
       xbar = xbar,
       # Claude Sonnet 5 2026-11-21          1 line
       # wqrZ$Rinv (only, not the whole QR object) is needed later by
-      # ydep-aware prediction; NULL (no duplicate entry) when qyde==0.
+      # yde-aware prediction; NULL (no duplicate entry) when qyde==0.
       wqrZRinv = if (qyde > 0) wqrZ$Rinv,
       x = if (x) X, y = if (y) Y, z = if (x && qyde > 0) Z,
       loo = Loo, lootime = lootime,
@@ -842,13 +842,13 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
 }
 
 # Claude Sonnet 5 2026-11-21          entire block
-# Internal borm() helpers for the ydep (yde/ytrans) mechanism, used by
+# Internal borm() helpers for the yde/ytrans mechanism, used by
 # both the optimizing-mode (single point estimate) and sampling-mode
 # (full posterior draws) branches of borm() itself -- top-level per
 # this package's standing rule that a helper used more than once must
 # not live inside another function's body.
 
-##' Back-Transform a borm() ydep tau Vector/Draw
+##' Back-Transform a borm() yde tau Vector/Draw
 ##'
 ##' Internal helper for [borm()]: back-transforms one posterior draw's (or the optimizing-mode point estimate's) flattened `tau` coefficient vector from the QR-transformed `Z` scale to the original covariate scale, and computes the intercept (`alpha`) adjustment implied by `Z`'s own centering -- the direct generalization, to a `qyde x myde` `tau` matrix and a `k x myde` `ytransmat`, of [blrm()]'s own constrained-PPO `tau` back-transform (`taus <- wqrZ$Rinv %*% taus; alphas <- alphas - d$pposcore[-1] * sum(taus * zbar)`, a `q x 1` `tau` and a length-`k` `pposcore`).
 ##' @param tauvec a length `qyde*myde` vector (one posterior draw, or the point estimate), in Stan's own column-major matrix-parameter order (`tau[1,1], tau[2,1], ..., tau[qyde,1], tau[1,2], ...`)
@@ -861,7 +861,7 @@ borm <- function(formula, yde = NULL, ytrans = NULL,
 ##' @return a list with `tau` (the `qyde x myde` back-transformed coefficient matrix, on `Z`'s original scale and the user's own unscaled `ytrans(y)` units) and `alphaadj` (a length-`(k-1)` vector to subtract from `alpha`, one entry per alpha index)
 ##' @author Frank Harrell
 ##' @noRd
-bormYdepBT <- function(tauvec, qyde, myde, Rinv, zbar, ytransmat, yscale) {
+bormYdeBT <- function(tauvec, qyde, myde, Rinv, zbar, ytransmat, yscale) {
   Tm  <- matrix(tauvec, nrow = qyde, ncol = myde)
   Tbt <- Rinv %*% Tm
   zbartau <- as.vector(matrix(zbar, nrow = 1) %*% Tbt)
@@ -881,7 +881,7 @@ bormYdepBT <- function(tauvec, qyde, myde, Rinv, zbar, ytransmat, yscale) {
 ##' @return a length-`myde` character vector
 ##' @author Frank Harrell
 ##' @noRd
-bormYdepColLab <- function(ytransmat, myde) {
+bormYdeColLab <- function(ytransmat, myde) {
   cn <- colnames(ytransmat)
   # Claude Sonnet 5 2026-11-21          1 line
   # Reject names cbind() auto-infers from a bare-symbol argument (e.g.
@@ -893,7 +893,7 @@ bormYdepColLab <- function(ytransmat, myde) {
   cn
 }
 
-##' Flattened Names for a borm() ydep tau Matrix
+##' Flattened Names for a borm() yde tau Matrix
 ##'
 ##' Internal helper for [borm()]: names for `tau`'s flattened (column-major, matching `as.vector()`/Stan's own convention) entries, as `"<Z column> x <ytrans column>"`.
 ##' @param Zcolnames column names of the `yde` design matrix `Z`
@@ -903,8 +903,8 @@ bormYdepColLab <- function(ytransmat, myde) {
 ##' @return a length-`qyde*myde` character vector
 ##' @author Frank Harrell
 ##' @noRd
-bormYdepNames <- function(Zcolnames, ytransmat, qyde, myde) {
-  paste(rep(Zcolnames, myde), "x", rep(bormYdepColLab(ytransmat, myde), each = qyde))
+bormYdeNames <- function(Zcolnames, ytransmat, qyde, myde) {
+  paste(rep(Zcolnames, myde), "x", rep(bormYdeColLab(ytransmat, myde), each = qyde))
 }
 
 ##' Combined beta+tau Contrast Row Builder for borm()'s npcontrast
@@ -923,7 +923,7 @@ bormYdepNames <- function(Zcolnames, ytransmat, qyde, myde) {
 ##' @return a list with `cn`, `C` (already QR-transformed, `p+qyde*myde` columns wide), `cmus`, `csds`
 ##' @author Frank Harrell
 ##' @noRd
-bormDoconYdep <- function(fo, X, wqrX, zatr, zTerms, zass, zsformula,
+bormDoconYde <- function(fo, X, wqrX, zatr, zTerms, zass, zsformula,
                           Z, wqrZ, ytransmat, qyde, myde, pc, ylev) {
   nint <- length(ylev) - 1
   p <- ncol(X)
@@ -935,7 +935,7 @@ bormDoconYdep <- function(fo, X, wqrX, zatr, zTerms, zass, zsformula,
   # fo is a stub for Xcontrast()'s own internal predict() call, not a
   # complete fit -- see docon()'s identical fix (stanMisc.r) for why
   # qyde must be forced to 0 here, or predict.borm() misroutes to
-  # bormPredictYdep() on this incomplete object.
+  # bormPredictYde() on this incomplete object.
   fo$qyde <- 0L
 
   foX <- fo
@@ -1014,7 +1014,7 @@ bormDoconYdep <- function(fo, X, wqrX, zatr, zTerms, zass, zsformula,
 
 ##' Resolve newdata for a borm() Prediction Call
 ##'
-##' Internal helper for [predict.borm()]/`bormPredictYdep()`: finds the data frame to predict at, trying, in order, a named `newdata=` argument, a `predict(fit, d, type=...)`-style POSITIONALLY-passed (unnamed) data frame argument -- the convention [rms::contrast.rms()]'s own internal `pred()` wrapper uses -- and finally [rms::gendata()] built from named covariate-value arguments, matching [rms::Xcontrast()]'s own convention. Confirmed necessary directly: `contrast()` on a `yde`-fitted `borm()` object failed with a `gendata()` error before this fix, since `contrast.rms()` passes its data frame positionally, which a plain `dots$newdata` lookup does not see.
+##' Internal helper for [predict.borm()]/`bormPredictYde()`: finds the data frame to predict at, trying, in order, a named `newdata=` argument, a `predict(fit, d, type=...)`-style POSITIONALLY-passed (unnamed) data frame argument -- the convention [rms::contrast.rms()]'s own internal `pred()` wrapper uses -- and finally [rms::gendata()] built from named covariate-value arguments, matching [rms::Xcontrast()]'s own convention. Confirmed necessary directly: `contrast()` on a `yde`-fitted `borm()` object failed with a `gendata()` error before this fix, since `contrast.rms()` passes its data frame positionally, which a plain `dots$newdata` lookup does not see.
 ##' @param object a [borm()] fit object
 ##' @param dots the result of `list(...)` from the calling predict method
 ##' @return a data frame
@@ -1034,13 +1034,13 @@ bormGetNewdata <- function(object, dots) {
 
 ##' Error If a borm() Fit Used yde/ytrans
 ##'
-##' Internal helper for [Mean.borm()]/[Quantile.borm()]/[ExProb.borm()]: these delegate entirely to their `blrm()` counterparts, whose logic is hardcoded to a single-column `cppo` and would silently ignore a `yde`/`ytrans` Y-dependent effect rather than erroring -- this stops that from happening silently, until these three functions get their own `yde`-aware implementations (as [predict.borm()] already does for `type='lp'`/`'x'`, via `bormPredictYdep()`).
+##' Internal helper for [Mean.borm()]/[Quantile.borm()]/[ExProb.borm()]: these delegate entirely to their `blrm()` counterparts, whose logic is hardcoded to a single-column `cppo` and would silently ignore a `yde`/`ytrans` Y-dependent effect rather than erroring -- this stops that from happening silently, until these three functions get their own `yde`-aware implementations (as [predict.borm()] already does for `type='lp'`/`'x'`, via `bormPredictYde()`).
 ##' @param object a [borm()] fit object
 ##' @param fname the name of the calling function, for the error message
 ##' @return nothing; stops with an error if `object$qyde > 0`
 ##' @author Frank Harrell
 ##' @noRd
-bormStopIfYdep <- function(object, fname) {
+bormStopIfYde <- function(object, fname) {
   qyde <- object$qyde
   if (length(qyde) && qyde > 0) {
     stop(
@@ -1052,10 +1052,10 @@ bormStopIfYdep <- function(object, fname) {
 
 ##' Y-Dependent-Effect-Aware Prediction for a `borm()` Fit Using `yde`/`ytrans`
 ##'
-##' Internal helper for [predict.borm()]: implements `type='lp'` (the posterior mean/median point-estimate case, without `cint` or `fun=`) and `type='x'`, generalizing [predict.blrm()]'s own single-column `cppo` logic (`object$cppo`, a scalar `Z*cppo(ycut)` term) to `borm()`'s `q x m` `tau` matrix and `k x m` `ytransmat`: the Y-dependent design contribution for one observation at one Y cutoff is the `q*m`-length vector `as.vector(outer(Z[row,], ytransmat[cutoff row,]))` (in the same column-major order `tau`'s flattened draws/back-transform use -- see `bormYdepBT()`'s own documentation), dotted against the flattened `tau` coefficients. `newdata` is resolved via [rms::gendata()] exactly as [rms::Xcontrast()] does, since [rms::predictrms()]'s own `second=TRUE` mechanism cannot be reused here (it is keyed off `object$pppo`, which `borm()` always sets to 0 so that `blrm()`'s shared `predict`/`Mean`/`Quantile`/`ExProb` code degrades correctly for a non-`yde` `borm()` fit).
+##' Internal helper for [predict.borm()]: implements `type='lp'` (the posterior mean/median point-estimate case, without `cint` or `fun=`) and `type='x'`, generalizing [predict.blrm()]'s own single-column `cppo` logic (`object$cppo`, a scalar `Z*cppo(ycut)` term) to `borm()`'s `q x m` `tau` matrix and `k x m` `ytransmat`: the Y-dependent design contribution for one observation at one Y cutoff is the `q*m`-length vector `as.vector(outer(Z[row,], ytransmat[cutoff row,]))` (in the same column-major order `tau`'s flattened draws/back-transform use -- see `bormYdeBT()`'s own documentation), dotted against the flattened `tau` coefficients. `newdata` is resolved via [rms::gendata()] exactly as [rms::Xcontrast()] does, since [rms::predictrms()]'s own `second=TRUE` mechanism cannot be reused here (it is keyed off `object$pppo`, which `borm()` always sets to 0 so that `blrm()`'s shared `predict`/`Mean`/`Quantile`/`ExProb` code degrades correctly for a non-`yde` `borm()` fit).
 ##' @author Frank Harrell
 ##' @noRd
-bormPredictYdep <- function(object, ...,
+bormPredictYde <- function(object, ...,
                             kint, ycut, fun, funint, type,
                             se.fit, codes, posterior.summary, cint) {
   if (type %nin% c("lp", "x")) {
@@ -1155,7 +1155,7 @@ bormPredictYdep <- function(object, ...,
   }
 
   expandZ <- function(Zrow, ytransrow) as.vector(outer(Zrow, ytransrow))
-  taunam <- bormYdepNames(colnames(Z), ytransmat, qyde, myde)
+  taunam <- bormYdeNames(colnames(Z), ytransmat, qyde, myde)
 
   if (type == "x") {
     Zexp <- matrix(0., n, qyde * myde)
@@ -1243,7 +1243,7 @@ bormStats <- function(fit, ns = 400, prob = 0.95, pl = FALSE,
   ylev <- f$ylevels
 
   # Claude Sonnet 5 2026-11-22          entire block
-  # ydep: draws has [alphas, betas, taus] when qyde>0 (see borm()'s own
+  # yde: draws has [alphas, betas, taus] when qyde>0 (see borm()'s own
   # draws <- cbind(alphas, betas, taus)); the old
   # s <- draws[, c(kmid, (nrp+1):ncol(draws)), drop=FALSE] silently
   # included the tau columns too, giving cbind(1,X) (p+1 columns)
@@ -1269,7 +1269,7 @@ bormStats <- function(fit, ns = 400, prob = 0.95, pl = FALSE,
     # ytrans is stored raw -- wrap a plain-vector result into a matrix,
     # exactly as borm()'s own construction of ytransmat already does.
     if (!is.matrix(ytransmat)) ytransmat <- matrix(ytransmat, ncol = 1)
-    taunam <- bormYdepNames(colnames(Z), ytransmat, qyde, myde)
+    taunam <- bormYdeNames(colnames(Z), ytransmat, qyde, myde)
     betanam <- setdiff(cn[-(1:nrp)], taunam)
     s <- draws[, c(cn[kmid], betanam), drop = FALSE]
     taudraws <- draws[, taunam, drop = FALSE]
@@ -1597,7 +1597,7 @@ predict.borm <- function(object, ...,
       posterior.summary = match.arg(posterior.summary), cint = cint
     ))
   }
-  bormPredictYdep(object, ...,
+  bormPredictYde(object, ...,
     kint = kint, ycut = ycut, fun = fun, funint = funint,
     type = match.arg(type), se.fit = se.fit, codes = codes,
     posterior.summary = match.arg(posterior.summary), cint = cint
@@ -1615,7 +1615,7 @@ predict.borm <- function(object, ...,
 ##' @method Mean borm
 ##' @export
 Mean.borm <- function(object, ...) {
-  bormStopIfYdep(object, "Mean.borm")
+  bormStopIfYde(object, "Mean.borm")
   Mean.blrm(object, ...)
 }
 
@@ -1630,7 +1630,7 @@ Mean.borm <- function(object, ...) {
 ##' @method Quantile borm
 ##' @export
 Quantile.borm <- function(object, ...) {
-  bormStopIfYdep(object, "Quantile.borm")
+  bormStopIfYde(object, "Quantile.borm")
   Quantile.blrm(object, ...)
 }
 
@@ -1645,6 +1645,6 @@ Quantile.borm <- function(object, ...) {
 ##' @method ExProb borm
 ##' @export
 ExProb.borm <- function(object, ...) {
-  bormStopIfYdep(object, "ExProb.borm")
+  bormStopIfYde(object, "ExProb.borm")
   ExProb.blrm(object, ...)
 }

@@ -27,7 +27,7 @@
 //    a different loop-invariant-structure cost.
 //
 // Claude Sonnet 5 2026-11-21          entire paragraph
-// ydep (borm()'s `yde`/`ytrans` arguments): Z (CENTERED, QR-
+// yde (borm()'s `yde`/`ytrans` arguments): Z (CENTERED, QR-
 // orthogonalized in R, like X) is the yde design matrix, q its number
 // of columns; ytransmat is ytrans(ylev) -- one row per Y LEVEL (k
 // rows, auto-centered/scaled in R), m columns. tau (a q x m parameter
@@ -104,7 +104,7 @@
 // cauchy_lcdf exist to avoid, unmeasured here, so they keep the
 // scalar per-observation loop instead of trading accuracy for speed.
 //
-// No ppo/cppo Stan code is included: borm's ydep (above) plays that
+// No ppo/cppo Stan code is included: borm's yde (above) plays that
 // role instead. pcontrast is supported (C/cmus/csds below, identical
 // mechanism to blrm's own); tau's prior is a single scalar-SD
 // normal(0, tausd) on every entry by default, not pcontrast/npcontrast
@@ -193,7 +193,7 @@ functions {
 
   // ---- logistic/loglog/cloglog: fully vectorized, no loop at all ----
   // e is the same quantity (lp + random-effect contribution) for both
-  // the p1 and p2 components of one observation; the ydep contribution
+  // the p1 and p2 components of one observation; the yde contribution
   // (ydeterm1/ydeterm2) and the intercept are the only parts that
   // differ between them. ia2_safe is ia2 with every 0
   // (meaning "no second component") clamped to a dummy valid index
@@ -233,7 +233,7 @@ functions {
   // non-finite to the branch that will be multiplied by zero, rather
   // than trying to bound how extreme the real data can make it).
   // Claude Sonnet 5 2026-11-21          3 lines
-  // ydeterm1/ydeterm2 (the ydep Y-dependent contribution at the ia/ia2
+  // ydeterm1/ydeterm2 (the yde Y-dependent contribution at the ia/ia2
   // alpha indices respectively) are added into e1/e2_raw BEFORE the
   // has2 dummy-pair substitution below, so they inherit that
   // substitution's existing NaN-safety for free on unused rows -- no
@@ -357,7 +357,7 @@ data {
   matrix[N, p] X;                   // matrix of CENTERED, QR-orthogonalized predictors (done in R)
 
   // Claude Sonnet 5 2026-11-21          6 lines
-  // ydep: Z is the yde design matrix (CENTERED, QR-orthogonalized in R,
+  // yde: Z is the yde design matrix (CENTERED, QR-orthogonalized in R,
   // exactly like X), q its number of columns (0 when yde is absent).
   // ytransmat is ytrans(ylev) -- one row per Y LEVEL (k rows, matching
   // ylev's own length and alpha-index-to-Y-level convention exactly,
@@ -391,7 +391,7 @@ data {
   // value" necessarily mixes both) -- C2's p+q*m columns multiply
   // append_row(beta, to_vector(tau)); already QR-transformed (each
   // named setting's row individually, in R, before any contrast
-  // arithmetic -- see bormDoconYdep()'s own documentation for why a
+  // arithmetic -- see bormDoconYde()'s own documentation for why a
   // single whole-matrix transform at the end, as pcontrast's C above
   // uses, does not work here).
   int<lower = 0> cn2;
@@ -431,7 +431,7 @@ transformed data {
     has2[n] = ia2[n] > 0 ? 1 : 0;
   }
   // Claude Sonnet 5 2026-11-21          6 lines
-  // ydep: ia/ia2_safe index alpha (1..k-1, Y-levels 2..k), but
+  // yde: ia/ia2_safe index alpha (1..k-1, Y-levels 2..k), but
   // ytransmat has k rows (Y-levels 1..k, matching ylev, row 1 unused,
   // exactly as blrm's pposcore[ia+1]/pposcore[ia2+1] convention
   // requires a +1 shift from alpha-index to Y-level-index). Stan has
@@ -456,7 +456,7 @@ parameters {
   array[Nc == 0 || use_mre == 1 ? 0 : 1] real<lower = 0> sigmag;    // single-sigma SD
   array[Nc == 0 || use_mre == 0 ? 0 : 1] real<lower = 0> sigma1;    // mix_re SD at mre = 0
   array[Nc == 0 || use_mre == 0 ? 0 : 1] real sigma2;               // mix_re SD at mre = 1 (sign free)
-  matrix[q, m] tau;                   // ydep coefficients; zero-sized when q==0 or m==0
+  matrix[q, m] tau;                   // yde coefficients; zero-sized when q==0 or m==0
 }
 
 transformed parameters {
@@ -478,7 +478,7 @@ transformed parameters {
   vector[N] gamma_eta;                 // precomputed per-observation random-effect contribution
   vector[N] log_lik;
   // Claude Sonnet 5 2026-11-21          4 lines
-  // ydep: ZT = Z*tau computed once, vectorized (all-zero/empty when
+  // yde: ZT = Z*tau computed once, vectorized (all-zero/empty when
   // q==0 or m==0, confirmed safe -- see ormcon.stan's own test
   // harness). ydeterm1/ydeterm2 are the per-observation Y-dependent
   // contributions at alpha indices ia/ia2 respectively -- this MUST be
@@ -549,7 +549,7 @@ model {
   if (cn > 0) target += normal_lpdf(C * beta | cmus, csds);
   if (cn2 > 0) target += normal_lpdf(C2 * append_row(beta, to_vector(tau)) | cmus2, csds2);
   // Claude Sonnet 5 2026-11-21          1 line
-  // ydep: default prior, a single scalar SD normal(0, tausd) on every
+  // yde: default prior, a single scalar SD normal(0, tausd) on every
   // tau entry, per Frank's explicit instruction (unlike blrm's own
   // constrained-PPO tau, which has no default prior at all and relies
   // solely on npcontrast). A no-op when q==0 or m==0 (to_vector of a

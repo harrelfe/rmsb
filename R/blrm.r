@@ -350,7 +350,7 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
   if (length(cppo)) {
     # Claude Sonnet 5 2026-11-16          6 lines
     # normcppo=TRUE centers and scales cppo(y) automatically; confirmed
-    # directly (same mechanism and same test as ydep's ytrans, which
+    # directly (same mechanism and same test as yde's ytrans, which
     # reversed this) that this (a) distorts the reported beta
     # coefficient(s) for any predictor appearing in both the main
     # formula and the ppo submodel by roughly tau*mean(cppo(y)), and
@@ -584,7 +584,7 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
           # Claude Sonnet 5 2026-11-16          2 lines
           # Scale back to raw cppo(y) units AFTER the alphaadj line
           # above, which must match pposcore's own (possibly
-          # normcppo-scaled) units -- same order bormYdepBT() uses.
+          # normcppo-scaled) units -- same order bormYdeBT() uses.
           taus <- taus / d$cppo_scale
           subscript <- as.integer(gsub("tau\\[(.*)\\]", "\\1", ta)) # Z column
           namtau <- paste(colnames(Z)[subscript], "x f(y)")

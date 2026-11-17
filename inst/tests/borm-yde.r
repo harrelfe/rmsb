@@ -1,4 +1,4 @@
-## Tests borm()'s yde/ytrans (ydep) mechanism: the generalization of
+## Tests borm()'s yde/ytrans mechanism: the generalization of
 ## blrm()'s ppo/cppo to a matrix-valued Y-dependent effect (one or more
 ## columns from ytrans, vs. cppo's single score). Self-contained: does
 ## not depend on anything else having been run first.
@@ -184,7 +184,7 @@ cat("    beta-part should match 6a's exactly (ycut-independent):", f_npc$nContra
 ## yde-fitted borm() (matching blrm's own partial-PO requirement) and
 ## that its value actually changes with ycut, matching predict()'s
 ## own ground truth exactly. Also exercises a real, separate bug this
-## exposed in bormPredictYdep(): contrast.rms()'s internal predict()
+## exposed in bormPredictYde(): contrast.rms()'s internal predict()
 ## call passes its data frame POSITIONALLY (not as newdata=), which a
 ## plain dots$newdata lookup does not see -- fixed via the new
 ## bormGetNewdata() helper.
