@@ -1,318 +1,54 @@
-Changes for 2.0-0 (2026-11-22)
-  * borm/predict.borm: fixed a real bug exposed by rms::contrast.rms()
-    (see below): its internal predict() call passes the data frame
-    POSITIONALLY (predict(fit, d, type='x')), not as newdata=, which
-    bormPredictYdep()'s plain dots$newdata lookup did not recognize,
-    causing a gendata() crash for any yde-fitted model used with
-    contrast(). Fixed with a new bormGetNewdata() helper that
-    recognizes a positionally-passed data frame the same way
-    rms::predictrms() itself does.
-  * rms::contrast.rms (R/contrast.s, in the rms package): its
-    ycut-passing logic was hardcoded to inherits(fit,'blrm'), so
-    contrast() on a yde-fitted borm() model silently evaluated the
-    Y-dependent effect at the reference intercept regardless of any
-    ycut supplied, while still mislabeling the output as if ycut had
-    been honored -- confirmed directly (not just reasoned through):
-    contrast()'s value was identical with and without an explicit
-    ycut, and differed from the correct value computed via
-    predict(..., type='lp', ycut=...). Fixed by generalizing the
-    check to also recognize a borm() fit with qyde>0, while keeping
-    the separate cppo-requirement check blrm-specific (borm() has no
-    cppo at all, it validates yde/ytrans/tau itself). Re-verified
-    blrm()'s own existing cppo-based contrast() behavior is unchanged
-    (inst/tests/blrm-cppo.r, blrm-contrast.r both re-run, identical
-    values). A yde-fitted borm() fit now requires ycut for contrast(),
-    matching blrm()'s own partial-PO requirement, and the returned
-    value now changes correctly with ycut, matching predict()'s own
-    ground truth exactly.
-  * borm-yde.r: extended with tests for both of the above.
-  * borm: implements ydep via new arguments yde (a formula, paralleling
-    blrm()'s own ppo) and ytrans (a function, paralleling cppo but
-    generalized to return a matrix of one or more columns instead of a
-    single score) -- a single-column ytrans applied to a single yde
-    predictor reduces mathematically to blrm()'s cppo mechanism
-    exactly, confirmed via direct comparison under real NUTS sampling
-    on identical data (blrm() needs normcppo=TRUE to match ytrans's
-    own unconditional auto-centering/scaling). A genuinely multi-
-    column (m>1) Y-dependent effect was validated on simulated data
-    with a known, strongly Y-dependent true treatment effect: the
-    yde-fitted model's loo elpd was far better than the plain
-    proportional-odds model's (-779 vs -1253 in the test), confirming
-    real signal recovery rather than merely running without error.
-  * ormcon.stan: added q/m/Z/ytransmat/tausd data and a q x m tau
-    parameter matrix, replacing the old always-zero lp2 placeholder.
-    ZT = Z*tau and the per-observation Y-dependent contributions at
-    the ia/ia2 alpha indices are computed inside Stan (transformed
-    parameters), not in R, since they combine a parameter with data --
-    the same reasoning already documented for lp = X*beta. The Y-
-    level-specific row of ytransmat is gathered via a +1 shift from
-    alpha-index to Y-level-index (ia_p1/ia2_safe_p1, precomputed once
-    in transformed data), exactly paralleling blrm's own
-    pposcore[ia+1]/pposcore[ia2+1] convention; confirmed this +1
-    shift, Stan's matrix-row-gather-by-integer-array syntax, and
-    rows_dot_product() all give numerically correct results via a
-    standalone test harness before relying on them in the real model.
-    tau gets a single scalar-SD normal(0, tausd) prior on every entry
-    by default (unlike blrm's own constrained-PPO tau, which has no
-    default prior at all) -- Frank's explicit choice for borm. q=0/
-    m=0 (yde absent) make Z, ytransmat, and tau all zero-sized;
-    confirmed via a standalone test harness that this compiles and
-    gives an identically-zero contribution, not an error. The new
-    ydeterm1/ydeterm2 terms are added into each pw_log_lik_* family's
-    e1/e2_raw before the existing has2/sign-selection dummy-pair
-    substitution, so the NaN-safety already built for those hazards
-    (see the 1.2-0 entry below) covers the new term for free.
-  * borm: ytrans's result is automatically centered and scaled
-    (independently per column, using the EMPIRICAL distribution of
-    observed Y -- ytrans(ylev[Y[,1]]) -- not a uniform average over
-    distinct levels, exactly matching blrm's own cppo-centering
-    convention under normcppo=TRUE) before being used; this is
-    unconditional for borm (no opt-out), per Frank's explicit
-    instruction. tau is back-transformed from the QR-transformed Z
-    scale to the original covariate scale (bormYdepBT()), and the
-    corresponding alpha/intercept adjustment implied by Z's own
-    centering is computed per alpha index (varies by Y-level, unlike
-    blrm's single constrained-PPO tau's uniform-across-levels
-    adjustment) -- confirmed self-consistent via a direct check that
-    reconstructing the linear predictor from the back-transformed
-    alpha/beta/tau at a covariate's original scale exactly reproduces
-    the raw QR-scale linear predictor Stan actually optimized.
-  * borm: yde predictors may (and usually will) overlap formula's own
-    predictors, per Frank's explicit instruction, exactly like ppo's
-    existing semantics.
-  * predict.borm: for a yde-fitted model, implements its own
-    yde-aware type='lp' and type='x' (the two most commonly needed,
-    and the building blocks type='fitted' etc. use internally),
-    generalizing predict.blrm()'s hardcoded single-column cppo logic
-    to tau's q x m matrix via bormPredictYdep(). Other types, and
-    fun=, are not yet implemented for a yde-fitted model and raise an
-    informative error rather than silently ignoring the Y-dependent
-    effect. Building Z at predict time needed two fixes to how
-    rms::Design() is called, neither about yde logic itself, both
-    confirmed directly with standalone reproductions: (1) a newdata
-    frame containing columns beyond yde's own formula (e.g. the main
-    formula's own covariates) made rms::Design() fail once more than
-    one row was requested, apparently via a datadist interaction --
-    fixed by subsetting to yde's own variables first; (2) rms::Design()
-    cannot build contrasts for a categorical predictor from newdata
-    containing only one of its levels, unlike predictrms()'s own
-    machinery for the main formula -- fixed by releveling factor/
-    character columns to the full level set seen when yde was fit.
-    Also fixed, found via the same direct verification: kint must be
-    re-derived from a user-supplied ycut (predict.blrm() does this;
-    an early version of bormPredictYdep() did not, so the alpha part
-    of lp silently used the default reference intercept regardless of
-    ycut while the tau part correctly used it) -- caught by a manual
-    cross-check of predict()'s output against the fit's own stored
-    coefficients, not by inspection.
-  * Mean.borm/Quantile.borm/ExProb.borm: now error informatively
-    rather than silently ignoring yde/ytrans when delegating to their
-    blrm() counterparts (which are hardcoded to a single-column cppo);
-    not yet implemented for a yde-fitted model.
-  * borm: npcontrast now implemented, as a combined beta+tau contrast
-    mechanism (bormDoconYdep(), ormcon.stan's new cn2/C2/cmus2/csds2
-    data and normal_lpdf(C2 * append_row(beta, to_vector(tau)) |
-    cmus2, csds2) prior term) -- turned out to need more than the
-    originally-planned generalization of rms::Xcontrast() (Path 1):
-    beta and tau are mechanically separate Stan parameter blocks, so
-    a single-design-matrix contrast row (as docon() builds for
-    pcontrast, or as blrm()'s own single-column-tau npcontrast uses)
-    cannot express a quantity like "the effect of a predictor at a
-    given Y value", which is beta_j + Z_j . tau . ytransmat[y,] --
-    necessarily mixing both. Each named predictor-setting list in
-    npcontrast may carry an optional ycut (a single Y value applied
-    to every setting, or a named vector giving a different Y value
-    per setting, exactly paralleling blrm's existing ycut
-    convention); a setting with no ycut contributes a pure-beta row.
-    No change to rms::Xcontrast() itself was needed after all: each
-    setting's row is built by calling it twice (once against the
-    main formula, once against yde) and combining in R, which turned
-    out simpler and more general than modifying the shared rms
-    function. Confirmed directly (not just reasoned through, in
-    inst/tests/borm-yde.r): a pure-beta npcontrast (no ycut) gives
-    exactly the same beta-part as an equivalent pcontrast, with its
-    tau-part exactly 0; two settings sharing the same covariate
-    values but different ycut have their beta-parts cancel to
-    exactly 0 in a difference, giving a pure-tau contrast; a mixed
-    contrast populates both parts, with the beta-part identical to
-    the pure-beta case (confirming it is ycut-independent, as the
-    math requires) -- i.e. simple contrasts automatically drop the
-    unneeded part, with no special syntax needed for any of the
-    three cases. Finding and fixing this also exposed a real,
-    pre-existing, unrelated bug: docon() returns the QR-transformed
-    contrast under the name C, not Contrastt, so fit.object$Contrastt/
-    $nContrastt have always silently been NULL for both blrm() and
-    borm() (the actual Stan-side C/C2 data were unaffected, since
-    those were already built from the correct field) -- fixed in both
-    blrm.r and borm.r.
-  * borm-yde.r: new test in inst/tests covering all of the above,
-    including the full npcontrast mechanism.
-  * Stan: use built-in log_inv_logit_diff for stable interior log-likelihood
-  * Accuracy: replace log(inv_logit(ca) - inv_logit(ca1)) with Stan's
-    built-in log_inv_logit_diff(ca, ca1) at every uncensored-interior and
-    interval-censored log-likelihood term in lrmconppo.stan,
-    lrmconppot.stan, and lrmcppo.stan (pw_log_lik and Pr). Avoids
-    catastrophic cancellation when both cutpoints are deep in the same
-    tail (large |eta| or many intercepts); naive formula returned NaN on
-    14% of a 198-point test grid and up to 2.3% relative error where
-    finite, vs ~1e-15 (machine epsilon) for the built-in, measured against
-    an arbitrary-precision (Decimal) reference. Verified blrm(optimizing)
-    matches rms::orm MLEs and -2LL on simulated data (k=4 and k=9
-    categories, with and without cppo), and a short NUTS run completes
-    without error.
-  * Cleanup: remove the three commented-out log_diff_exp/log1p_exp dead-
-    code alternatives in lrmcppo.stan that had anticipated this fix but
-    were never wired in.
-  * blrm: Stan code (lrmconppo.stan, lrmconppot.stan, lrmcppo.stan) now
-    takes precomputed per-observation intercept subscripts (ia, ia2,
-    sgn) as data, from the new rms::ormIdx() wrapper around the same
-    Fortran ormidx routine rms::orm.fit() already uses, instead of the
-    raw censored y. Removes every censoring-type conditional from the
-    Stan likelihood; the Stan code is otherwise unchanged and no score/
-    Hessian is computed, matching the design rms::orm.fit() already
-    uses and that the future rmsb::borm() will reuse.
-  * blrm: fixes two bugs this exposed/removed as a side effect of the
-    above. (1) Censoring: blrm's own Ncens counts and the data it sent
-    to Stan assumed a stale 1..k integer-only y convention that no
-    longer matches Ocens2ord()'s actual -Inf/Inf censoring sentinels,
-    so censored fits were silently broken; blrm now converts to the
-    exact -1/k+1 sentinel convention rms::orm.fit() uses before calling
-    ormIdx(). (2) cppo: the old lrmconppo.stan/lrmconppot.stan
-    left-censoring branch applied a frozen pposcore[2] non-PO score
-    regardless of the censoring bound, instead of varying with it like
-    every other branch; the new unified ia/ia2-indexed formula applies
-    pposcore[ia+1] uniformly, eliminating that branch-specific bug by
-    construction.
-  * blrm: the unconstrained PPO model (ppo without cppo) still does not
-    support censored Y, but now fails with an informative error instead
-    of silently corrupting the response via as.integer(-Inf) = NA.
-  * DESCRIPTION: bumped required rms version to >= 8.2-2, which exports
-    ormIdx().
-  * blrm/print.blrm: fit object now stores Ncens1 and Ncens2 (original
-    vs. post-coding censoring counts), taken directly from Ocens2ord()'s
-    own attributes, matching rms::orm.fit() exactly, in place of a single
-    Ncens field that silently matched Ncens2 and could disagree with
-    orm's printed count whenever a right-censored point at/beyond the
-    highest uncensored value was reclassified to uncensored at a new
-    tail category. print.blrm now displays Ncens1, matching print.orm().
-    This replaces the fit object's Ncens field -- not backward compatible
-    with fits saved before this change.
-  * ormcon.stan: new Stan code for the borm function (see below);
-    implements all 5 rms::orm() link functions (logistic, probit,
-    loglog, cloglog, cauchit), numerically accurate calculations, and
-    both the single-sigma and rms::orm.rfit() dual-sigma (mix_re)
-    random-intercept extensions.
-  * ormcon.stan: vectorized the logistic/loglog/cloglog likelihoods
-    (no per-observation loop at all; probit/cauchit remain scalar
-    loops, since their numerically-stable forms -- std_normal_lcdf/
-    cauchy_lcdf -- exist only as Stan's summing distribution functions,
-    with no accuracy-preserving elementwise alternative). Found and
-    fixed three distinct 0 .* non-finite = NaN hazards this
-    "compute both branches, blend by multiplying by 0/1" style of
-    vectorization introduced, confirmed by direct reproduction in each
-    case, not just reasoned through: (1) the two-component (has2)
-    blend's dummy index satisfied log_inv_logit_diff/log_diff_exp's
-    x > y ordering requirement but not finiteness -- fixed by feeding a
-    FIXED dummy pair (0, -1), not one derived from the real intercept
-    value. (2) loglog/cloglog's sign (CDF-vs-CCDF) selection could
-    overflow the unused branch at ordinary, non-extreme eta (as low as
-    ~8-9 for cloglog, since its CDF saturates doubly-exponentially
-    fast) -- fixed the same way, feeding 0 to the unused branch. (3) A
-    deeper version of the same issue was an actual SEGFAULT/bus error
-    (not just NaN) in logCDF_loglog/logCCDF_cloglog's raw exp() calls
-    overflowing during Stan's reverse-mode autodiff, reproduced in a
-    1-line standalone model and fixed by capping the argument to exp()
-    at 700 (comfortably below the ~709.78 double-precision overflow
-    point), the same defensive principle Stan's own log1p_exp/log1m_exp
-    already use. All three fixes verified via a full re-run of the
-    5-link rms::orm comparison suite (unaffected) plus targeted
-    regression tests reproducing each original failure.
-  * borm: new function, the Bayesian analog of rms::orm() the way
-    blrm() is the Bayesian analog of rms::lrm() -- all 5 rms::orm()
-    link families, exact censoring handling via rms::ormIdx() (as
-    blrm() now also uses), a Dirichlet-only intercept prior (no
-    alternative priors, per simulations showing they slow sampling
-    badly once the number of distinct Y values is large -- the regime
-    borm() is meant for), pcontrast (reusing blrm()'s exact mechanism;
-    npcontrast is accepted as an argument for forward compatibility but
-    errors if supplied, since there is no non-proportional-odds
-    submodel to apply it to until ydep is implemented), and both the
-    single-sigma and rms::orm.rfit() dual-sigma (mix_re) random-
-    intercept extensions -- mix_re is a mix_re() formula special used
-    together with cluster(), exactly as rms::orm() itself handles it,
-    not a borm() argument. As with blrm(), covariates are centered and
-    QR-orthogonalized in R before being passed to Stan; the Stan code
-    itself has no knowledge of either transformation.
-  * borm: implements Spearman's rho and Somers' Dxy following
-    rms::orm()'s own censoring rules exactly (rho is NA whenever any
-    censoring is present; Dxy/C are NA only when left- or interval-
-    censoring is present, using rms::Ocens2Surv()/survival::
-    concordancefit() for the right-censoring-only case), each with a
-    highest posterior density interval computed the same way blrm()
-    already computes one for its other predictive-accuracy measures --
-    see the new bormStats()/print.bormStats(), paralleling
-    blrmStats()/print.blrmStats() but generalized to the actual link
-    family (rms::probabilityFamilies) instead of a hardcoded plogis().
-  * borm: print.borm() gives a family-dependent title and subtitle
-    matching rms::print.orm()'s own family-dependent title switch
-    (prefixed "Bayesian", as blrm()'s titles are) and blrm()'s
-    always-Dirichlet subtitle. predict.borm()/Mean.borm()/
-    Quantile.borm()/ExProb.borm() delegate entirely to the existing
-    blrm() versions, which were already link-and-model-structure-
-    agnostic (dispatching via object$link/rms::probabilityFamilies,
-    with their only ppo/cppo-specific logic guarded behind fields
-    borm() always sets to 0/NULL) -- confirmed by inspection before
-    reusing rather than duplicating ~400 lines of logic.
-  * stanMisc.r: extracted docon() (the pcontrast/npcontrast design-
-    matrix-and-prior builder) out of a closure inside blrm() into a
-    shared top-level function, now used by both blrm() and borm(), per
-    this package's own standing rule that a helper needed in more than
-    one file must not live inside another function's body.
-  * ormcon.stan: added pcontrast support (cn/C/cmus/csds data fields
-    and the corresponding normal_lpdf prior term), matching blrm()'s
-    Stan files, and added a gamma transformed parameter (the per-
-    cluster random intercept, scaled by sigmag for the single-sigma
-    case or left as the standardized v_i -- matching
-    rms::orm.rfit()'s own reporting convention -- when mix_re is
-    active) that blrm()'s existing draws-extraction convention
-    requires by that exact name; its absence was caught by testing
-    (every clustered borm() fit failed with "no parameter gamma" before
-    this fix), not anticipated in advance.
-  * Build: wired ormcon.stan into the package build via
-    rstantools::rstan_config() (regenerates R/stanmodels.R and
-    src/stanExports_ormcon.*/RcppExports.cpp automatically from the
-    .stan files present in inst/stan/ -- no file needed hand-editing).
-  * Verified borm() against rms::orm() MLEs (method='optimizing'):
-    matches closely for logistic (uncensored and with left/right/
-    interval censoring mixed) and probit; confirmed cluster() and
-    cluster()+mix_re() sample cleanly under real NUTS; confirmed
-    pcontrast actually constrains beta (a tight prior pulls it to
-    ~0.0006 vs. ~0.76 under a near-flat one) rather than being silently
-    ignored; confirmed npcontrast's intended error. R CMD check status:
-    OK (two environment-only INFO notes: the mice suggested package
-    being unavailable to check with, and GNU make being a
-    SystemRequirements -- neither related to this work).
-  * borm-blrm.r, borm-orm.r: new tests in inst/tests
-  * blrm/npcontrast: `ycut` was documented and accepted (see the
-    `pcontrast=pcon(0.3), ycut=1` example already in
-    inst/tests/blrm-pcontrast.r) but silently discarded by the shared
-    docon() helper, so users had to manually pre-scale `sd` by
-    `cppo(ycut)`'s value themselves (per npcontrast's own doc text).
-    Fixed: docon() now applies `cppo(ycut)` to each named setting's
-    Z-row automatically for npcontrast (a no-op for pcontrast, since
-    its Stan-side prior multiplies C against beta alone and a
-    cppo-weighted row would not match beta's dimension). `ycut` may
-    also now be a named vector giving a different Y cutoff per named
-    setting within one npcontrast specification -- e.g. to put a prior
-    directly on the difference between an effect evaluated at two
-    different Y values. Backward compatible: only activates when
-    `ycut` is explicitly supplied, which previously had no effect at
-    all. Verified the auto-weighted raw contrast exactly matches the
-    old manual-prescaling workaround, that omitting `ycut` reproduces
-    identical (unweighted) behavior, that a named two-Y-value `ycut`
-    gives the expected `cppo(y2)-cppo(y1)` weighted difference, and
-    that pcontrast's own `ycut` handling is unchanged (re-ran
-    inst/tests/blrm-pcontrast.r). R CMD check status: OK.
+Changes for 2.0-0 (2026-11-17)
+  * New function borm(): the Bayesian analog of rms::orm() (as blrm() is
+    to rms::lrm()), supporting all 5 of orm()'s link families (logistic,
+    probit, log-log, complementary log-log, Cauchy), exact censoring,
+    pcontrast, and both the single- and dual-sigma (mix_re) random-
+    intercept extensions of rms::orm.rfit(). Includes bormStats()/
+    print.bormStats() for Spearman's rho and Somers' Dxy with highest
+    posterior density intervals, following rms::orm()'s own censoring
+    rules. See web/R/rmsb/borm_development.md for the full development
+    history.
+  * borm(): new ydep mechanism (yde/ytrans arguments) for Y-dependent
+    (non-proportional-odds) effects, generalizing blrm()'s own ppo/cppo
+    to allow more than one Y-dependent shape at once, with a combined
+    beta+tau npcontrast for the Y-dependent effect. tausd, the prior SD
+    for tau, is specified on a raw, portable scale -- one unit of the
+    yde predictor, one SD of ytrans(y) -- rather than an internal,
+    dataset-dependent one; default value unchanged.
+  * print.borm()'s summary table reorganized: first column now shows
+    Obs, Distinct Y, Median Y, p, Draws, Chains, Time (plus cluster/
+    random-effect information when present); third column shows the
+    mean |P(Y>=median)-0.5| index, matching rms::print.orm(), including
+    its subscripted Y[0.5] formatting under prType='latex'/'html'.
+  * blrm()/borm(): new cores_loo argument (default 1) to control loo()'s
+    own parallelism separately from the mc.cores option; "loo failed"
+    now reports the actual underlying error instead of a generic message.
+  * blrm()/borm(): sampling.args's documentation now describes using
+    adapt_delta/max_treedepth to address divergent transitions on hard,
+    separation-prone data.
+  * blrm(): fixed a bug where a user-supplied init= was silently ignored
+    when backend='rstan'.
+  * blrm(): Stan code now uses precomputed censoring subscripts from
+    rms::ormIdx() (shared with borm()); fixed two related bugs found in
+    the process -- a stale censoring-sentinel convention that could
+    silently break censored fits, and a cppo left-censoring score that
+    did not vary with the censoring bound.
+  * blrm(): the unconstrained PPO model (ppo without cppo) with censored
+    Y now errors informatively instead of silently corrupting the
+    response.
+  * blrm(): Ncens1/Ncens2 (matching rms::orm.fit()'s own convention)
+    replace the old Ncens field in the fit object and in print.blrm() --
+    not backward compatible with fits saved before this change.
+  * blrm(): npcontrast's ycut argument now actually has an effect (was
+    previously silently ignored); ycut may also be a named vector giving
+    a different Y value per named setting.
+  * blrm(): normcppo=TRUE now prints a warning when used with cppo,
+    since it can distort the ordinary (non-PPO) coefficient for any
+    predictor that also appears in the main formula.
+  * blrm(): improved numerical accuracy of the interior/interval-censored
+    log-likelihood terms in the constrained- and unconstrained-PPO Stan
+    code.
+  * DESCRIPTION: now requires rms >= 8.2-2.
 
 Changes for 1.1-3 (2026-10-29)
    * blrm: added sampling.args to hash digest

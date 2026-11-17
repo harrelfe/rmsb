@@ -39,6 +39,7 @@ blrm(
   debug = FALSE,
   sampling.args = NULL,
   showopt = FALSE,
+  cores_loo = 1,
   ...
 )
 }
@@ -107,9 +108,11 @@ blrm(
 
 \item{debug}{set to \code{TRUE} to output timing and progress information to /tmp/debug.txt}
 
-\item{sampling.args}{a list containing parameters to pass to \code{\link[rstan:sampling]{rstan::sampling()}} or to the \code{rcmdstan} \code{sample} function, other than these arguments: \verb{iter, warmup, chains, refresh, init} which are already arguments to \code{blrm}.  A good use of this is \code{sampling.args=list(seed=3)} to get reproducible sampling.}
+\item{sampling.args}{a list containing parameters to pass to \code{\link[rstan:sampling]{rstan::sampling()}} or to the \code{rcmdstan} \code{sample} function, other than these arguments: \verb{iter, warmup, chains, refresh, init} which are already arguments to \code{blrm}.  A good use of this is \code{sampling.args=list(seed=3)} to get reproducible sampling. If Stan reports many divergent transitions -- which can happen for near-separated data, e.g. two groups whose Y distributions barely overlap -- try \code{sampling.args=list(control=list(adapt_delta=0.995, max_treedepth=15))} (for \code{rstan}; \code{cmdstanr}'s \code{sample()} takes \code{adapt_delta}/\code{max_treedepth} directly rather than nested in \code{control}) before concluding the model itself is wrong: in one such case this cut divergent transitions by about 85\% with no change to the model or data. This is not \code{blrm()}'s own default because it roughly doubles sampling time on an otherwise well-behaved fit for no benefit (confirmed directly: 2.4x slower, identical zero divergences, on ordinary non-separated data) -- raise it only when you actually see divergence warnings.}
 
 \item{showopt}{set to \code{TRUE} to show Stan optimizer output}
+
+\item{cores_loo}{number of cores for \code{\link[loo:loo]{loo::loo()}}'s own internal Pareto-smoothing computation (passed as its \code{cores} argument, for both backends). Defaults to \code{1}, not to the number of cores \code{options('mc.cores')} may be set to for other purposes (e.g. parallelizing chains), because \code{loo()} tries to fork the R session whenever \code{cores > 1}, and forking is unavailable in some environments -- e.g. the Positron IDE -- causing \code{loo()} to fail with an uninformative "loo failed" warning until that error is actually surfaced. Increase this only when you know forking is safe in your environment.}
 
 \item{...}{passed to \code{\link[rstan:optimizing]{rstan::optimizing()}} or the \code{rcmdstan} optimizing function.  \code{sampling.args} is usually used instead.}
 }

@@ -47,8 +47,9 @@
 ##' @param standata set to `TRUE` to return the Stan data list and not run the model
 ##' @param debug set to `TRUE` to output timing and progress information to /tmp/debug.txt
 ##' @param file a file name for a `saveRDS`-created file containing or to contain the saved fit object.  If `file` is specified and the file does not exist, it will be created right before the fit object is returned, less the large `rstan` object.  If the file already exists, its stored `md5` hash string `datahash` fit object component is retrieved and compared to that of the current `rstan` inputs.  If the data to be sent to `rstan`, the priors, and all sampling and optimization options and stan code are identical, the previously stored fit object is immediately returned and no new calculatons are done.
-##' @param sampling.args a list containing parameters to pass to [rstan::sampling()] or to the `rcmdstan` `sample` function, other than these arguments: `iter, warmup, chains, refresh, init` which are already arguments to `blrm`.  A good use of this is `sampling.args=list(seed=3)` to get reproducible sampling.
+##' @param sampling.args a list containing parameters to pass to [rstan::sampling()] or to the `rcmdstan` `sample` function, other than these arguments: `iter, warmup, chains, refresh, init` which are already arguments to `blrm`.  A good use of this is `sampling.args=list(seed=3)` to get reproducible sampling. If Stan reports many divergent transitions -- which can happen for near-separated data, e.g. two groups whose Y distributions barely overlap -- try `sampling.args=list(control=list(adapt_delta=0.995, max_treedepth=15))` (for `rstan`; `cmdstanr`'s `sample()` takes `adapt_delta`/`max_treedepth` directly rather than nested in `control`) before concluding the model itself is wrong: in one such case this cut divergent transitions by about 85% with no change to the model or data. This is not `blrm()`'s own default because it roughly doubles sampling time on an otherwise well-behaved fit for no benefit (confirmed directly: 2.4x slower, identical zero divergences, on ordinary non-separated data) -- raise it only when you actually see divergence warnings.
 ##' @param showopt set to `TRUE` to show Stan optimizer output
+##' @param cores_loo number of cores for [loo::loo()]'s own internal Pareto-smoothing computation (passed as its `cores` argument, for both backends). Defaults to `1`, not to the number of cores `options('mc.cores')` may be set to for other purposes (e.g. parallelizing chains), because `loo()` tries to fork the R session whenever `cores > 1`, and forking is unavailable in some environments -- e.g. the Positron IDE -- causing `loo()` to fail with an uninformative "loo failed" warning until that error is actually surfaced. Increase this only when you know forking is safe in your environment.
 ##' @param ... passed to [rstan::optimizing()] or the `rcmdstan` optimizing function.  `sampling.args` is usually used instead.
 ##' @return an `rms` fit object of class `blrm`, `rmsb`, `rms` that also contains `rstan` or `cmdstanr` results under the name `rstan`.  In the `rstan` results, which are also used to produce diagnostics, the intercepts are shifted because of the centering of columns of the design matrix done by [blrm()].  With `method='optimizing'` a class-less list is return with these elements: `coefficients` (MLEs), `beta` (non-intercept parameters on the QR decomposition scale), `deviance` (-2 log likelihood), `return_code` (see [rstan::optimizing()]), and, if you specified `hessian=TRUE` to [blrm()], the Hessian matrix.  To learn about the scaling of orthogonalized QR design matrix columns, look at the `xqrsd` object in the returned object.  This is the vector of SDs for all the columns of the transformed matrix.  The returned element `sampling_time` is the elapsed time for running posterior samplers, in seconds.  This will be just a little more than the time for running one CPU core for one chain.
 ##' @examples
@@ -91,7 +92,7 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
                  method = c("both", "sampling", "optimizing"),
                  inito = if (length(ppo)) 0 else "random", inits = inito,
                  standata = FALSE, file = NULL, debug = FALSE,
-                 sampling.args = NULL, showopt = FALSE, ...) {
+                 sampling.args = NULL, showopt = FALSE, cores_loo = 1, ...) {
   call <- match.call()
   method <- match.arg(method)
   backend <- if (missing(backend)) {
@@ -347,7 +348,25 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
   alphasign <- if (iprior == 0) 1. else -1.
 
   if (length(cppo)) {
+    # Claude Sonnet 5 2026-11-16          6 lines
+    # normcppo=TRUE centers and scales cppo(y) automatically; confirmed
+    # directly (same mechanism and same test as ydep's ytrans, which
+    # reversed this) that this (a) distorts the reported beta
+    # coefficient(s) for any predictor appearing in both the main
+    # formula and the ppo submodel by roughly tau*mean(cppo(y)), and
+    # (b) was, until the fix just below, not even correctly scaled back
+    # when reporting tau. FALSE (the default) remains preferred;
+    # warn rather than silently changing existing normcppo=TRUE behavior.
     if (normcppo) {
+      warning(
+        "normcppo=TRUE centers and scales cppo(y) automatically. ",
+        "This can distort the reported beta coefficient(s) for any ",
+        "predictor appearing in both the main formula and the ppo ",
+        "submodel (confirmed: beta can shift by roughly ",
+        "tau * mean(cppo(y))). normcppo=FALSE (the default) is ",
+        "preferred; use normcppo=TRUE only if you need its sampling ",
+        "behavior and accept this trade-off."
+      )
       Cppo <- function(y, fun, center, scale) (fun(y) - center) / scale
       formals(Cppo)$fun <- cppo
       ## Evaluate function on original scale
@@ -357,6 +376,11 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
       cppo <- Cppo
     }
     d$pposcore <- cppo(ylev) # now it's centered and scaled
+    # Claude Sonnet 5 2026-11-16          3 lines
+    # Stored so both back-transform sites (optimizing-mode and the
+    # posterior-draws loop) can divide the reported tau back to raw
+    # cppo(y) units -- see the fix at each "taus <- ... %*% Rinv" site.
+    d$cppo_scale <- if (normcppo) sd(cppoy) else 1
   } else {
     d$pposcore <- numeric()
   }
@@ -557,6 +581,11 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
           alphas <- alphas - d$pposcore[-1] * sum(taus * zbar)
           # zbartau <- sum(taus * zbar)    # longhand
           # for(j in 1 : (k-1)) alphas[j] <- alphas[j] - d$pposcore[j + 1] * zbartau
+          # Claude Sonnet 5 2026-11-16          2 lines
+          # Scale back to raw cppo(y) units AFTER the alphaadj line
+          # above, which must match pposcore's own (possibly
+          # normcppo-scaled) units -- same order bormYdepBT() uses.
+          taus <- taus / d$cppo_scale
           subscript <- as.integer(gsub("tau\\[(.*)\\]", "\\1", ta)) # Z column
           namtau <- paste(colnames(Z)[subscript], "x f(y)")
         } else {
@@ -594,11 +623,19 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
 
   stime <- system.time({
     args <- switch(backend,
+      # Claude Sonnet 5 2026-11-24          1 line
+      # init=inits was previously omitted entirely from the rstan
+      # branch's args (only the cmdstan branch set it, confirmed
+      # directly by the identical gap found and fixed in borm.r), so
+      # any user-supplied inits was silently ignored for
+      # backend='rstan'. rstan::sampling() accepts the literal string
+      # "random" (inits' own default) directly, so no conditional
+      # wrapper is needed here.
       rstan = c(
         list(mod,
           pars = incpars, data = d, iter = iter,
           warmup = warmup, chains = chains,
-          refresh = refresh
+          refresh = refresh, init = inits
         ),
         sampling.args
       ),
@@ -752,6 +789,10 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
   if (length(cppo)) {
     sc <- d$pposcore[-1]
     for (i in 1:ndraws) alphas[i, ] <- alphas[i, , drop = FALSE] - sc * sum(taus[i, ] * zbar)
+    # Claude Sonnet 5 2026-11-16          2 lines
+    # Scale back to raw cppo(y) units AFTER the alphaadj loop above,
+    # which must match pposcore's own (possibly normcppo-scaled) units.
+    taus <- taus / d$cppo_scale
   } else if (pppo > 0) {
     for (i in 1:ndraws) {
       for (j in 3:k) {
@@ -779,14 +820,23 @@ blrm <- function(formula, ppo = NULL, cppo = NULL,
     lootime <- system.time(
       Loo <- tryCatch(
         switch(backend,
-          rstan = rstan::loo(g),
-          cmdstan = g$loo()
+          rstan = rstan::loo(g, cores = cores_loo),
+          cmdstan = g$loo(cores = cores_loo)
         ),
-        error = function(...) list(fail = TRUE)
+        # Claude Sonnet 5 2026-11-23          1 line
+        # Capture the real error message instead of discarding it --
+        # confirmed directly (in borm()'s identical code) that loo()
+        # throws a real, specific error (e.g. "All input values must
+        # be finite or -Inf", "NAs not allowed in input") whenever
+        # log_lik contains even one -Inf/NaN entry, which this
+        # package's own "loo failed" message previously gave no way
+        # to see.
+        error = function(e) list(fail = TRUE, message = conditionMessage(e))
       )
     )
     if (itfailed(Loo)) {
-      warning("loo failed; try running on loo(stanGet(fit object)) for more information")
+      warning("loo failed: ", Loo$message,
+              "; try running loo(stanGet(fit object)) for more information")
       Loo <- NULL
     }
   }
