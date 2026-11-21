@@ -1,6 +1,5 @@
 require(rmsb)
-options(prType='html')
-require(ordinal)
+# options(prType='html')
 cstanSet()
 set.seed(2)
 n <- 500
@@ -13,14 +12,15 @@ r <- max(abs(range(y)))
 histbackback(split(y, x), brks=seq(-r, r, by=1))
 sopts <- list(adapt_delta=0.995, max_treedepth=15, seed=7)
 # sopts <- NULL
-fi <- function(y) y
-f <- borm(y ~ x, family='probit')
-f1 <- blrm(y ~ x, ~ x, cppo = fi, sampling.args=sopts)
+fi <- function(y, bar) y - bar
+formals(fi)$bar <- mean(y)
+f1 <- orm(y ~ x, ~ x, ytrans=fi, family='probit')
 f1
-f2 <- borm(y ~ x, ~ x, fi, sampling.args=sopts)
+f2 <- borm(y ~ x, ~ x, fi, family='probit', sampling.args=sopts)
 f2
-f <- clm(as.ordered(y) ~ x, scale = ~ x, link = "probit")
-summary(f)
-f <- borm(y ~ x, yde = ~ x, ytrans = function(y) y, family='probit', sampling.args=sopts)
-f <- borm(y ~ x, yde = ~ x, ytrans = function(y) cbind(y=y, y2=y^2), family='probit', sampling.args=sopts)
+g <- function(y, bar) cbind(lin=y - bar, quad=(y - bar) ^ 2)
+formals(g)$bar <- mean(y)
+# The following borm call took 694s
+# f <- borm(y ~ x, yde = ~ x, ytrans = g, family='probit', sampling.args=sopts)
+f <- orm(y ~ x, yde = ~ x, ytrans = g, family='probit')
 f
