@@ -1494,8 +1494,35 @@ predict.blrm <-
         if (pppo > 0) ep <- ep + cppos * zt[j]
         ep <- cumprob(ep)
         PP[i, j, ] <- ep
-        if (type == "fitted.ind") PPeq[i, j, ] <- c(1., ep) - c(ep, 0.)
+        # Claude Sonnet 5 2026-11-21
+        # type='mean' also needs the category (not just cumulative)
+        # probabilities, exactly like 'fitted.ind' -- confirmed this
+        # was the actual cause of type='mean' crashing ("attempt to set
+        # an attribute on NULL") on a plain, non-borm, non-yde ordinal
+        # blrm() fit: 'mean' is listed in this function's own type=
+        # choices but had no case in the switch() below at all.
+        if (type %in% c("fitted.ind", "mean")) PPeq[i, j, ] <- c(1., ep) - c(ep, 0.)
       }
+    }
+
+    # Claude Sonnet 5 2026-11-21          entire block
+    # type='mean': per-draw mean is PPeq[i, j, ] %*% ylevels (the same
+    # weighted-category-probability-sum identity Mean.lrm()/predict.orm()
+    # use), then summarized across draws exactly like the type='lp'
+    # block above (posterior.summary mean/median/all, HPD via cint) --
+    # returns here rather than falling through to the fitted/fitted.ind-
+    # specific data-frame-shaping code below, which doesn't apply.
+    if (type == "mean") {
+      yl <- if (codes) 1 : length(ylevels) else as.numeric(ylevels)
+      if (any(is.na(yl)))
+        stop('values of response levels must be numeric when codes=FALSE')
+      Rm <- matrix(NA_real_, ndraws, n, dimnames = list(NULL, rnam))
+      for (i in 1 : ndraws) Rm[i, ] <- PPeq[i, , ] %*% yl
+      if (posterior.summary == "all") return(Rm)
+      rsum <- apply(Rm, 2, postsum)
+      if (!cint) return(rsum)
+      hpd <- apply(Rm, 2, HPDint, prob = cint)
+      return(list(mean = rsum, lower = hpd[1, ], upper = hpd[2, ]))
     }
 
     if (posterior.summary == "all") {

@@ -49,6 +49,44 @@ Changes for 2.0-0 (2026-11-17)
     log-likelihood terms in the constrained- and unconstrained-PPO Stan
     code.
   * DESCRIPTION: now requires rms >= 8.2-2.
+  * borm(): tau coefficient names for yde now use ytrans's own column
+    names when available and unique, otherwise generic names yt (one
+    column) or yt1, yt2, ... (more than one column).
+  * borm(): predict() now supports type='fitted', 'fitted.ind', and
+    'mean' for a fit using yde/ytrans (previously only type='lp'/'x'
+    were supported); also fixed a bug where type='mean' was not
+    accepted by predict.borm() at all, even for an ordinary (non-yde)
+    fit.
+  * borm(): Mean(), Quantile(), and ExProb() now work for a fit using
+    yde/ytrans (previously errored); for such a fit the function they
+    return must be called with newdata= (a data frame) instead of a
+    bare linear predictor, since a Y-dependent effect cannot be
+    represented by a single linear predictor value.
+  * blrm(): fixed a bug where predict(type='mean') was listed as a
+    valid option but crashed when used, for an ordinal (more than 2
+    response levels) fit.
+  * borm(): Quantile() for a fit using yde/ytrans now also supports
+    method='interpolated' (previously only 'discrete'), and is now the
+    default, matching rms::Quantile.orm().
+  * borm(): ExProb() for a fit using yde/ytrans now gives an informative
+    error for conf.int= (not yet implemented) instead of silently
+    ignoring it and returning a result with no interval.
+  * New Survival.borm()/survest.borm(), the Bayesian analogs of
+    rms::Survival.orm()/survest.orm(), fully accounting for posterior
+    uncertainty: survival probabilities (and their highest posterior
+    density intervals, when requested) are computed separately for each
+    posterior draw, then summarized across draws. Works for ordinary
+    borm() fits and for fits using yde/ytrans. Requires y=TRUE (the
+    default) when the fit was made. Unlike rms::Survival.orm(), always
+    requires newdata (no bare linear-predictor/design-matrix
+    alternative, since no single value represents every posterior
+    draw). A highest posterior density interval, or
+    posterior.summary='median', needs every posterior draw's value at
+    every requested time stored at once; when that would need more than
+    hpd_threshold (default 1.5e7) total values, this stops with an
+    informative error instead of attempting it -- specify fewer times=,
+    or use the default posterior.summary='mean' with conf.int=0 for a
+    cheap running-mean result unaffected by this limit.
 
 Changes for 1.1-3 (2026-10-29)
    * blrm: added sampling.args to hash digest

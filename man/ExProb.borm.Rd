@@ -9,13 +9,17 @@
 \arguments{
 \item{object}{a \code{\link[=borm]{borm()}} fit object}
 
-\item{...}{passed to \code{\link[=ExProb.blrm]{ExProb.blrm()}}}
+\item{...}{passed to \code{\link[=ExProb.blrm]{ExProb.blrm()}} for a non-\code{yde} fit; \code{codes} is
+read from here for a \code{yde} fit}
 }
 \value{
-see \code{\link[=ExProb.blrm]{ExProb.blrm()}}
+see \code{\link[=ExProb.blrm]{ExProb.blrm()}} (non-\code{yde}) or \code{bormYdeExProb()} (\code{yde})
 }
 \description{
-Delegates entirely to \code{\link[=ExProb.blrm]{ExProb.blrm()}}, which is already link-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}). See \code{\link[=ExProb.blrm]{ExProb.blrm()}} for details. Not yet implemented when the fit used \code{yde}/\code{ytrans} (errors informatively rather than silently ignoring the Y-dependent effect, since \code{\link[=ExProb.blrm]{ExProb.blrm()}}'s own logic is hardcoded to a single-column \code{cppo}).
+For an ordinary (non-\code{yde}) fit, delegates entirely to \code{\link[=ExProb.blrm]{ExProb.blrm()}},
+which is already link-agnostic. See \code{\link[=ExProb.blrm]{ExProb.blrm()}} for details. For
+a \code{yde} fit, returns \code{bormYdeExProb()}'s closure instead, which
+requires \code{newdata} rather than a bare linear predictor.
 }
 \seealso{
 \code{\link[=ExProb.blrm]{ExProb.blrm()}}

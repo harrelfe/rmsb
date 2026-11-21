@@ -46,7 +46,7 @@ borm(
 
 \item{yde}{formula specifying the model predictors for which a Y-dependent effect is to be estimated, with no left-hand-side variable, paralleling \code{\link[=blrm]{blrm()}}'s own \code{ppo} argument exactly (including that its predictors may, and usually will, overlap those in \code{formula}). Must be accompanied by \code{ytrans}. If a predictor in \code{yde} is not in \code{formula}, it contributes only a Y-dependent effect, no constant (proportional-odds) one.}
 
-\item{ytrans}{a function of one argument, \code{y}, specifying the shape(s) of the Y-dependent effect(s) for the predictors in \code{yde}, paralleling \code{\link[=blrm]{blrm()}}'s own \code{cppo} argument but generalized to allow more than one shape at once: it is called on the distinct, ordered Y values seen in the data (\code{y}'s own values need not be the complete set, or in any particular order -- \code{ytrans} must work correctly on an arbitrary subset/order of Y values, since it is also called later, e.g. for contrasts, on individual Y values) and must return either a plain vector (one Y-dependent shape) or a matrix with one or more columns (several simultaneous Y-dependent shapes), one row (or value) per element of \code{y}. \code{ytrans} is used exactly as written for every purpose a user or \code{borm()}'s own methods will see (storage, \code{bormStats()}, \code{predict.borm()}), with no centering -- so \code{tau}, the coefficient \code{borm()} reports, is directly interpretable as "per unit of \code{ytrans(y)}, per unit of the \code{yde} predictor," independent of the sample means of \code{y}, the \code{yde} predictors, or any other covariate; an earlier version centered \code{ytrans} automatically, which was reversed after confirming directly that it silently distorted the \emph{other}, ordinary (non-\code{yde}) coefficient(s) for any predictor appearing in both \code{yde} and the main formula -- the common case, since a Y-dependent effect is normally an extension of an ordinary effect, not a separate one -- while providing no measurable sampling benefit. Internally (invisible to the user, and not reflected in the stored/reported \code{tau}), \code{ytrans(y)} IS still divided by its own SD over the observed Y values before being given to Stan, purely for numerical safety -- confirmed directly that skipping this is not safe: with no scaling at all, a \code{ytrans} producing values in roughly the hundreds or more (\code{ytrans=function(y) 100*y} on data with \code{y} up to about 10, for example) crashed R outright (a Stan optimizer segfault), while values up to the tens did not. A single-column \code{ytrans} applied to a single \code{yde} predictor reduces mathematically to \code{blrm()}'s own \code{cppo} mechanism. Must be accompanied by \code{yde}.}
+\item{ytrans}{a function of one argument, \code{y}, specifying the shape(s) of the Y-dependent effect(s) for the predictors in \code{yde}, paralleling \code{\link[=blrm]{blrm()}}'s own \code{cppo} argument but generalized to allow more than one shape at once: it is called on the distinct, ordered Y values seen in the data (\code{y}'s own values need not be the complete set, or in any particular order -- \code{ytrans} must work correctly on an arbitrary subset/order of Y values, since it is also called later, e.g. for contrasts, on individual Y values) and must return either a plain vector (one Y-dependent shape) or a matrix with one or more columns (several simultaneous Y-dependent shapes), one row (or value) per element of \code{y}. \code{ytrans} is used exactly as written for every purpose a user or \code{borm()}'s own methods will see (storage, \code{bormStats()}, \code{predict.borm()}), with no centering -- so \code{tau}, the coefficient \code{borm()} reports, is directly interpretable as "per unit of \code{ytrans(y)}, per unit of the \code{yde} predictor," independent of the sample means of \code{y}, the \code{yde} predictors, or any other covariate; an earlier version centered \code{ytrans} automatically, which was reversed after confirming directly that it silently distorted the \emph{other}, ordinary (non-\code{yde}) coefficient(s) for any predictor appearing in both \code{yde} and the main formula -- the common case, since a Y-dependent effect is normally an extension of an ordinary effect, not a separate one -- while providing no measurable sampling benefit. Internally (invisible to the user, and not reflected in the stored/reported \code{tau}), \code{ytrans(y)} IS still divided by its own SD over the observed Y values before being given to Stan, purely for numerical safety -- confirmed directly that skipping this is not safe: with no scaling at all, a \code{ytrans} producing values in roughly the hundreds or more (\code{ytrans=function(y) 100*y} on data with \code{y} up to about 10, for example) crashed R outright (a Stan optimizer segfault), while values up to the tens did not. A single-column \code{ytrans} applied to a single \code{yde} predictor reduces mathematically to \code{blrm()}'s own \code{cppo} mechanism. Must be accompanied by \code{yde}. When \code{ytrans} is a user-specified function, it is recommended to mean-center any column it produces, using that column's own sample mean, when the uncentered column's values have a mean far from zero. See the Examples section below, where the means are computed and stored for later use. When \code{ytrans} produces column names, these are used as part of the names given to the \code{tau} parameters.}
 
 \item{data}{a data frame; defaults to using objects from the calling environment}
 
@@ -117,6 +117,8 @@ an \code{rms} fit object of class \code{borm}, \code{rmsb}, \code{rms}, closely 
 Uses \code{rstan} with pre-compiled Stan code, or \code{cmdstan}, to get posterior draws of parameters from a Bayesian ordinal (or binary) cumulative probability regression model, with a choice of 5 link families -- \code{borm()} is to \code{\link[=blrm]{blrm()}} as \code{\link[rms:orm]{rms::orm()}} is to \code{\link[rms:lrm]{rms::lrm()}}: it generalizes the single (logistic) link that \code{blrm()} implements to all of the link families \code{orm()} supports, and is designed, like \code{orm()}, to scale to a very large number of distinct Y values.  Unlike \code{blrm()}, \code{borm()} does not implement the partial proportional odds model (\code{ppo}/\code{cppo}) itself; \code{blrm()} remains the function to use for that. Instead \code{borm()} implements a more general Y-dependent effect mechanism that plays \code{cppo}'s role, via two new arguments: \code{yde} (paralleling \code{ppo}) identifies which predictors get a Y-dependent effect, and \code{ytrans} (paralleling \code{cppo}, but returning a matrix of one or more columns instead of a single score) specifies the shape(s) of that dependency. A single-column \code{ytrans} with a single \code{yde} predictor reduces mathematically to \code{blrm()}'s own \code{cppo} mechanism.
 }
 \details{
+Y-dependent effects of selected predictors can also be included in the model by the user providing the \code{yde} and \code{ytrans} arguments. For a logit link this implements the constrained partial proportional odds model of Peterson and Harrell (1990). For a log-log link this represents time-dependent covariate effects in a Cox proportional hazards model when Y=time.
+
 The Stan code internally uses a Dirichlet prior on the multinomial (category) probabilities at the predictor means, inducing a prior for the intercepts, exactly as \code{\link[=blrm]{blrm()}}'s own default (\code{iprior=0}) does -- \code{borm()} does not offer \code{blrm()}'s other two intercept-prior choices, since simulations showed they slow sampling badly once the number of distinct Y values is large, the regime \code{borm()} is specifically meant for.  Likewise, no data-dependent conditionals appear in the Stan code at all: censoring is handled entirely through subscripts precomputed once in R by \code{\link[rms:ormIdx]{rms::ormIdx()}} (the same routine \code{\link[rms:orm.fit]{rms::orm.fit()}} uses), not through per-observation branching in Stan.
 
 Design matrix columns are centered and QR-orthogonalized (via \code{rmsb}'s internal \code{selectedQr()}, the identical mechanism \code{\link[=blrm]{blrm()}} uses) before being handed to the Stan code, so that highly collinear columns do not hinder posterior sampling; \strong{this transformation is done entirely in R, not in the Stan code}, which receives and fits \code{beta} on the already-transformed scale and knows nothing of the original covariate scale. Parameters are transformed back to the original data scale before being returned. Stan diagnostic output (e.g. from \code{\link[=stanDx]{stanDx()}} or \code{\link[=stanGet]{stanGet()}}) will show intercepts and coefficients on the centered/QR-transformed scale; everything \code{borm()} itself returns and prints is on the original, uncentered scale.
@@ -144,6 +146,34 @@ Set \code{options(rmsbmsg=FALSE)} to suppress certain information messages.
   # subject ID, with rms::orm.rfit()'s mix_re extension
   # mre <- ave(time, id, FUN = function(t) as.numeric(t > min(t)))
   # f <- borm(y ~ x + cluster(id) + mix_re(mre), data=mydata)
+}
+\dontrun{
+  # For Y=0, 1, 2 for no pain, pain, or death fit a partial proportional
+  # odds model that allows for a special effect of x1 on death (the
+  # linear part only)
+  f <- borm(y ~ rcs(x1, 4) + x2, ~ x1, ytrans=function(y) 1 * (y == 2))
+
+  # Fit the equivalent of an unequal variance 2-sample t-test for
+  # continuous Y.  This corresponds to a linear rescaling of probit
+  # ordinal model intercepts
+  yt <- function(y, bar) y - bar
+  formals(yt)$bar <- mean(y)
+  f <- borm(y ~ treatment, ~ treatment, ytrans=yt, family='probit')
+
+  # For continuous Y, let the linear effect of x1 be U-shaped over Y levels
+  yt <- function(y, bar) cbind(lin=y - bar, quad=(y - bar) ^ 2)
+  formals(yt)$bar <- mean(y)
+  yt
+  # Note that in the function definition, bar is now a fixed number,
+  # not the expression mean(y)
+  f <- borm(y ~ rcs(x1, 4) + x2, ~ x1, ytrans=yt)
+
+  # In some cases a vector of means will be needed:
+  yt <- function(y, bar) cbind(a=fun1(y) - bar[1], b=fun2(y) - bar[2])
+  formals(yt)$bar <- c(mean(fun1(y)), mean(fun2(y)))
+
+  # When using a spline function it may be advisable to use an
+  # orthogonal basis that is nicely scaled, perhaps natural splines.
 }
 }
 \seealso{
