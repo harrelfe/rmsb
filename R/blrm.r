@@ -991,10 +991,11 @@ blrmStats <- function(fit, ns = 400, prob = 0.95, pl = FALSE,
   hpd <- apply(stats, 2, HPDint, prob = prob)
   sym <- apply(stats, 2, distSym)
 
-  text <- paste0(
-    round(sbar, 3), " [", round(hpd[1, ], 3), ", ",
-    round(hpd[2, ], 3), "]"
-  )
+  # Claude Sonnet 5 2026-11-22
+  # bormFmtCI (shared, defined in borm.r -- one namespace across R/)
+  # wraps the brackets/comma-space in markupSpecs[[lang]]$smaller for
+  # non-plain output.
+  text <- bormFmtCI(sbar, hpd[1, ], hpd[2, ], dec = 3)
   Stats <- rbind(Mean = sbar, SE = se, hpd = hpd, Symmetry = sym)
   statnames <- colnames(Stats)
   names(text) <- statnames
@@ -1139,8 +1140,8 @@ print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
       list(x$na.action)
     )))
   qro <- function(x) {
-    r <- round(c(median(x), HPDint(x, prob)), 4)
-    paste0(r[1], " [", r[2], ", ", r[3], "]")
+    hpd <- HPDint(x, prob)
+    bormFmtCI(median(x), hpd[1], hpd[2], dec = 4)
   }
   ci <- x$clusterInfo
   sigmasum <- NULL
@@ -1150,13 +1151,8 @@ print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
   elpd_loo <- p_loo <- looic <- NULL
   if (length(loo)) {
     lo <- loo$estimates
-    pm <- if (prType() == "plain") {
-      "+/-"
-    } else {
-      markupSpecs[[prType()]][["plminus"]]
-    }
     nlo <- rownames(lo)
-    lo <- paste0(round(lo[, "Estimate"], 2), pm, round(lo[, "SE"], 2))
+    lo <- bormFmtPM(lo[, "Estimate"], lo[, "SE"], dec = 2)
     elpd_loo <- lo[1]
     p_loo <- lo[2]
     looic <- lo[3]
@@ -1229,7 +1225,13 @@ print.blrm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
   )
 
   data <- list(misc, c(mixed, NA), c(disc, NA), c(discr, NA))
-  z <- c(z, list(rms::prModItem("stats", list(headings = headings, data = data))))
+  # Claude Sonnet 5 2026-11-22
+  # Plain-text-only, matching print.borm()'s own identical change: see
+  # prStats()'s widthadj= argument.
+  widthadj <- c(3, 0, -5, 0)
+  z <- c(z, list(rms::prModItem(
+    "stats", list(headings = headings, data = data, widthadj = widthadj)
+  )))
 
   if (coefs)
     z <- c(z, list(rms::prModItem(
@@ -1296,7 +1298,7 @@ predict.blrm <-
 
     if (se.fit) warning("se.fit does not apply to Bayesian models")
     if (posterior.summary == "all" && !missing(cint) && cint) {
-      message('cint ignored when posterior.summary="all"')
+      warn_once('cint ignored when posterior.summary="all"')
     }
 
     kintgiven <- length(kint) > 0

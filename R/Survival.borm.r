@@ -79,10 +79,9 @@ utils::globalVariables('time')
 Survival.borm <- function(object, precision = 7, hpd_threshold = 1.5e7, ...) {
   qyde <- object$qyde
   if (! length(qyde)) qyde <- 0L
-  ylevels  <- object$ylevels
+  ylevels  <- object$yunique
   k        <- object$non.slopes
-  link     <- object$link
-  cumprob  <- eval(rms::probabilityFamilies[[link]][1])
+  cumprob  <- eval(rms::probabilityFamilies[[object$family]][1])
   draws    <- object$draws
   ndraws   <- nrow(draws)
   alphaname <- if (k == 1) "Intercept" else paste0("y>=", ylevels[-1])
@@ -111,10 +110,11 @@ Survival.borm <- function(object, precision = 7, hpd_threshold = 1.5e7, ...) {
                                ifelse(is.infinite(yupper), vals, (vals + yupper) / 2.)))
 
   if (qyde > 0) {
-    myde <- object$myde
     ytrans    <- eval(parse(text = object$ytrans))
     ytransmat <- ytrans(ylevels)
     if (! is.matrix(ytransmat)) ytransmat <- matrix(ytransmat, ncol = 1)
+    # Claude Sonnet 5 2026-11-23: myde is not stored -- recompute it
+    myde <- ncol(ytransmat)
     # Claude Sonnet 5 2026-11-22
     # Row alignment confirmed earlier this session (bormPredictYde()'s
     # own type='fitted'/'mean' extension): borm()'s ytransmat has one
@@ -301,8 +301,8 @@ Survival.borm <- function(object, precision = 7, hpd_threshold = 1.5e7, ...) {
 ##' Survival Estimates for a `borm()` Fit
 ##'
 ##' Thin wrapper around [Survival.borm()], paralleling `rms::survest.orm()`'s
-##' own role, but reading `borm`'s field names (`object$ylevels` etc.)
-##' where `survest.orm()` uses `orm`'s (`object$yunique` etc.) and,
+##' own role (both now read `object$yunique`, following `rms::orm()`'s
+##' own field-naming convention -- Claude Sonnet 5 2026-11-23), and,
 ##' because there is no single linear predictor representing every
 ##' posterior draw, always requiring `newdata` rather than accepting a
 ##' bare `linear.predictors=`/`x=`.

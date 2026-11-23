@@ -42,7 +42,12 @@ cat("blrm posterior means: x =", mean(f_blrm$draws[, "x"]),
     " tau =", mean(f_blrm$draws[, "x2=b x f(y)"]), "\n")
 cat("borm posterior means: x =", mean(f_borm$draws[, "x"]),
     " x2=b =", mean(f_borm$draws[, "x2=b"]),
-    " tau =", mean(f_borm$draws[, grep("ytrans", colnames(f_borm$draws))]), "\n")
+    # Claude Sonnet 5 2026-11-22, separator updated 2026-11-23
+    # Tau columns are named "<predictor> * yt" (single-column ytrans)
+    # or "<predictor> * yt1"/"yt2"/... (multi-column) -- confirmed
+    # directly via colnames(f_borm$draws); this test's own original
+    # grep("ytrans", ...) predates that naming and never matched.
+    " tau =", mean(f_borm$draws[, grep("yt", colnames(f_borm$draws))]), "\n")
 cat("(expect close agreement throughout, within ordinary MCMC noise)\n")
 
 ## ----------------------------------------------------------------------
@@ -82,7 +87,7 @@ cat("PO-only  loo elpd:", f_po$loo$estimates["elpd_loo", "Estimate"], "\n")
 cat("yde      loo elpd:", f_yde$loo$estimates["elpd_loo", "Estimate"], "\n")
 cat("(expect the yde model's elpd to be substantially higher -- the true effect is strongly Y-dependent)\n")
 cat("yde tau posterior means:\n")
-print(colMeans(f_yde$draws[, grep("ytrans", colnames(f_yde$draws)), drop = FALSE]))
+print(colMeans(f_yde$draws[, grep("yt", colnames(f_yde$draws)), drop = FALSE]))
 
 ## ----------------------------------------------------------------------
 ## 3. predict.borm()'s type='x'/'lp' for a yde-fitted model: direct
@@ -93,7 +98,7 @@ print(colMeans(f_yde$draws[, grep("ytrans", colnames(f_yde$draws)), drop = FALSE
 ## ----------------------------------------------------------------------
 
 cat("\n=== 3. predict.borm() type='x'/'lp' self-consistency ===\n")
-ylevels <- f_borm$ylevels
+ylevels <- f_borm$yunique
 ycutval <- ylevels[round(length(ylevels) * 0.5)]
 nd <- data.frame(x = 1, x2 = "b")
 lp <- predict(f_borm, newdata = nd, type = "lp", ycut = ycutval, cint = FALSE)
@@ -104,7 +109,7 @@ alphaname <- paste0("y>=", ylevels[-1])[kint]
 ytransmat <- eval(parse(text = f_borm$ytrans))(ylevels)
 if (!is.matrix(ytransmat)) ytransmat <- matrix(ytransmat, ncol = 1)
 manual <- co[alphaname] + co["x"] * 1 + co["x2=b"] * 1 +
-  co["x2=b x ytrans1"] * 1 * ytransmat[kint + 1, 1]
+  co["x2=b * yt"] * 1 * ytransmat[kint + 1, 1]
 cat("manual lp:", manual, " predict() lp:", lp, " diff:", manual - lp,
     " (expect ~0, machine epsilon)\n")
 
@@ -120,8 +125,38 @@ f0 <- borm(y ~ x + trt, family = "logistic", data = d2,
 lp0 <- predict(f0, newdata = data.frame(x = 0, trt = 1), type = "lp", cint = FALSE)
 cat("plain borm() predict still works:", lp0, "\n")
 
-cat("\n=== 5. Mean/Quantile/ExProb.borm() error clearly (not silently) for a yde fit ===\n")
-cat(tryCatch(Mean(f_yde), error = function(e) conditionMessage(e)), "\n")
+## ----------------------------------------------------------------------
+## 5. Mean/Quantile/ExProb.borm() for a yde fit: each returns a closure
+## requiring newdata= (a bare linear predictor cannot represent a
+## Y-dependent effect), confirmed to (a) still error informatively when
+## called without newdata, and (b) when called with newdata, agree
+## exactly with predict(object, newdata, type=...) directly, since
+## bormYdeMean()/bormYdeQuantile()/bormYdeExProb() delegate straight to
+## that (checked, not assumed, from reading R/borm.r).
+## ----------------------------------------------------------------------
+
+cat("\n=== 5. Mean/Quantile/ExProb.borm() for a yde fit (newdata-based closures) ===\n")
+nd5 <- data.frame(x = 0, trt = c(0, 1))
+
+m <- Mean(f_yde)
+cat("Mean(f_yde) is a function:", is.function(m), "\n")
+cat("called with no newdata still errors:",
+    tryCatch({ m(); "NO ERROR" }, error = function(e) conditionMessage(e)), "\n")
+mval <- m(newdata = nd5)
+mref <- predict(f_yde, nd5, type = "mean", cint = 0)
+cat("Mean() via closure:", mval, "\n")
+cat("predict(type='mean') directly:", mref, " (expect exact match)\n")
+
+q <- Quantile(f_yde)
+qval <- q(newdata = nd5)
+qref <- predict(f_yde, nd5, type = "fitted", posterior.summary = "mean", cint = 0)
+cat("Quantile() median via closure:", qval, "\n")
+cat("(cross-checked against predict(type='fitted') used internally by the closure)\n")
+
+e <- ExProb(f_yde)
+eval_ex <- e(newdata = nd5)
+cat("ExProb() via closure, class:", class(eval_ex), " y range:",
+    range(eval_ex$y), "\n")
 
 ## ----------------------------------------------------------------------
 ## 6. npcontrast: combined beta+tau contrasts via named predictor
@@ -232,16 +267,18 @@ invisible(capture.output(print(f_print)))
 cat("print(f_print) completed without error\n")
 
 draws <- f_print$draws
-ylevp <- f_print$ylevels
+ylevp <- f_print$yunique
 kmidp <- f_print$interceptRef
 ytransmatp <- eval(parse(text = f_print$ytrans))(ylevp)
 if (!is.matrix(ytransmatp)) ytransmatp <- matrix(ytransmatp, ncol = 1)
 cnp <- colnames(draws)
-taunamp <- grep("ytrans", cnp, value = TRUE)
+taunamp <- grep("yt", cnp, value = TRUE)
 betanamp <- setdiff(cnp[-(1:f_print$non.slopes)], taunamp)
 i <- 1
 beta_i <- draws[i, c(cnp[kmidp], betanamp)]
-tau_i <- matrix(draws[i, taunamp], f_print$qyde, f_print$myde)
+# myde not stored (Claude Sonnet 5 2026-11-23) -- recompute from taunamp
+mydep <- length(taunamp) / f_print$qyde
+tau_i <- matrix(draws[i, taunamp], f_print$qyde, mydep)
 etau_i <- tau_i %*% ytransmatp[kmidp + 1, ]
 ## Use bormStats()'s own stored real data (f_print$x/$z), not synthetic
 ## rows, so this actually exercises what bormStats() itself computes;

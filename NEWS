@@ -1,4 +1,21 @@
-Changes for 2.0-0 (2026-11-17)
+Changes for 2.0-0 (2026-11-23)
+  * borm(): naming consistency fixes with rms::orm(), per a cross-package audit of fit-object component names (2026-11-23): renamed the stored field ylevels to yunique (matching orm()'s own name for the same thing -- NOT backward compatible with previously-saved borm() fits, which must be refit); dropped the stored myde field entirely, now always recomputed as ncol(ytransmat) everywhere it's needed (matching orm()'s own convention of never storing it); dropped the redundant stored link field (always identical to family), with all borm-internal code now reading family directly; changed the yde tau coefficient name separator from " x " to " * " (e.g. "x2=b * yt1"), matching orm()'s own tauname convention exactly -- another non-backward-compatible, user-visible string change. bormBlrmDelegate() (used by predict.borm()/Mean.borm()/Quantile.borm()/ExProb.borm() for a non-yde fit's delegation to blrm.r's own generic methods) now also bridges ylevels/link onto the temporary delegate copy, since blrm.r's own code still expects those names unconditionally.
+  * borm(): now stops with an informative error if yde/ytrans is given with only 1 modeled intercept (a binary Y) -- a Y-dependent effect is not meaningful with only one cutpoint, and would be exactly redundant with the main formula's own ordinary effect for that predictor. Matches an identical check added to rms::orm().
+  * borm(): added the ytrans='all' shortcut, matching rms::orm()'s own (now k-1-free-parameter) version: one free tau parameter per modeled intercept except the first, which is anchored at zero for identifiability when the yde predictor is also in the main formula (the usual case). Does not support censored Y, and requires k <= 50 -- same restrictions as orm()'s own shortcut, for the same reasons. Verified against orm()'s own ytrans='all' MLE on identical data (coefficients agree to 3 significant figures between orm's MLE, borm's near-MLE optimizing mode, and borm's posterior mean), and against a loop-free vectorized construction's anchoring behavior via predict(..., ycut=) at both the anchored and a free cutpoint. While testing this, found and fixed a pre-existing, unrelated bug (confirmed with an ordinary custom ytrans too, not specific to 'all'): predict.borm()/bormStats() unconditionally re-parsed object$ytrans as deparsed text, which failed with "cannot coerce type 'closure' to vector of type 'character'" whenever object came from a file= cache hit, since borm() itself already re-hydrates a cache hit's ytrans into a real function before returning it.
+  * print.borm()/print.blrm(): for non-plain (latex/html/typst) output,
+    the point estimate in uncertainty-interval strings -- "point +/-
+    se" and "point [lower, upper]" -- stays at normal size, while
+    everything after it (the +/- symbol and se, or the brackets/comma-
+    space and lower/upper, numbers included) renders in a smaller font
+    via markupSpecs[[lang]]$smaller2. (Two earlier iterations: first
+    only the +/- symbol/brackets/comma-space were smaller, leaving ALL
+    numbers at normal size; then the whole string including the point
+    estimate was made smaller2 -- both corrected per Frank's follow-up
+    requests.) New shared helpers bormFmtPM()/bormFmtCI() (borm.r)
+    replace the previous hand-rolled paste0() calls at all 4
+    call sites (bormStats()/blrmStats()'s own text summaries, and
+    print.borm()/print.blrm()'s sigma/LOO summaries); plain-text output
+    is unaffected.
   * New function borm(): the Bayesian analog of rms::orm() (as blrm() is
     to rms::lrm()), supporting all 5 of orm()'s link families (logistic,
     probit, log-log, complementary log-log, Cauchy), exact censoring,

@@ -35,8 +35,8 @@ a data frame with variables \code{time}, \code{surv}, and (if
 }
 \description{
 Thin wrapper around \code{\link[=Survival.borm]{Survival.borm()}}, paralleling \code{rms::survest.orm()}'s
-own role, but reading \code{borm}'s field names (\code{object$ylevels} etc.)
-where \code{survest.orm()} uses \code{orm}'s (\code{object$yunique} etc.) and,
+own role (both now read \code{object$yunique}, following \code{rms::orm()}'s
+own field-naming convention -- Claude Sonnet 5 2026-11-23), and,
 because there is no single linear predictor representing every
 posterior draw, always requiring \code{newdata} rather than accepting a
 bare \verb{linear.predictors=}/\verb{x=}.
