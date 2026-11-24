@@ -11,12 +11,14 @@
   ycut = NULL,
   fun = NULL,
   funint = TRUE,
-  type = c("lp", "fitted", "fitted.ind", "mean", "x", "data.frame", "terms", "cterms",
-    "ccterms", "adjto", "adjto.data.frame", "model.frame"),
+  type = c("lp", "fitted", "fitted.ind", "mean", "quantile", "x", "data.frame", "terms",
+    "cterms", "ccterms", "adjto", "adjto.data.frame", "model.frame"),
   se.fit = FALSE,
   codes = FALSE,
   posterior.summary = c("mean", "median", "all"),
-  cint = 0.95
+  cint = 0.95,
+  q = NULL,
+  method = c("interpolated", "discrete")
 )
 }
 \arguments{
@@ -32,7 +34,7 @@
 
 \item{funint}{see \code{\link[=predict.blrm]{predict.blrm()}}}
 
-\item{type}{see \code{\link[=predict.blrm]{predict.blrm()}}; for a \code{yde}-fitted model only \code{'lp'} and \code{'x'} are currently implemented (errors otherwise)}
+\item{type}{see \code{\link[=predict.blrm]{predict.blrm()}}; for a \code{yde}-fitted model \code{'lp'}, \code{'x'}, \code{'fitted'}, \code{'fitted.ind'}, \code{'mean'}, and \code{'quantile'} are currently implemented (errors otherwise)}
 
 \item{se.fit}{see \code{\link[=predict.blrm]{predict.blrm()}}}
 
@@ -41,12 +43,16 @@
 \item{posterior.summary}{see \code{\link[=predict.blrm]{predict.blrm()}}}
 
 \item{cint}{see \code{\link[=predict.blrm]{predict.blrm()}}}
+
+\item{q}{for \code{type='quantile'} on a \code{yde}-fitted model, the quantile(s) desired (e.g. \code{.5} for the median); may be a vector. Ignored for other types.}
+
+\item{method}{for \code{type='quantile'} on a \code{yde}-fitted model, \code{'interpolated'} (the default) or \code{'discrete'}; see \code{\link[rms:Quantile.orm]{rms::Quantile.orm()}}'s own identically-named argument. Ignored for other types.}
 }
 \value{
 see \code{\link[=predict.blrm]{predict.blrm()}}
 }
 \description{
-Predict method for \code{\link[=borm]{borm()}} objects. When the fit did not use \code{yde}/\code{ytrans}, delegates entirely to \code{\link[=predict.blrm]{predict.blrm()}}, which is already link-and-model-structure-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}, with its only \code{ppo}/\code{cppo}-specific logic guarded behind fields \code{borm()} always sets to 0/\code{NULL}). When the fit did use \code{yde}/\code{ytrans}, has its own \code{yde}-aware implementation for \code{type='lp'} and \code{type='x'} (the two most commonly needed, and the building blocks \code{type='fitted'} etc. use internally); other types, and \verb{fun=}, are not yet implemented for a \code{yde}-fitted model and raise an informative error rather than silently ignoring the Y-dependent effect, since \code{\link[=predict.blrm]{predict.blrm()}}'s own (hardcoded single-column \code{cppo}) logic cannot be reused unchanged for \code{borm()}'s matrix-valued \code{tau}.
+Predict method for \code{\link[=borm]{borm()}} objects. When the fit did not use \code{yde}/\code{ytrans}, delegates entirely to \code{\link[=predict.blrm]{predict.blrm()}}, which is already link-and-model-structure-agnostic (dispatches via \code{object$link}/\code{rms::probabilityFamilies}, with its only \code{ppo}/\code{cppo}-specific logic guarded behind fields \code{borm()} always sets to 0/\code{NULL}). When the fit did use \code{yde}/\code{ytrans}, has its own \code{yde}-aware implementation for \code{type='lp'}, \code{'x'}, \code{'fitted'}, \code{'fitted.ind'}, \code{'mean'}, and (as of 2026-11-26) \code{'quantile'} -- each loops once per posterior draw (there is no single MLE the way there is for \code{\link[rms:orm]{rms::orm()}}'s own \code{yde} mechanism) and supports \code{posterior.summary='mean'}/\code{'median'}/\code{'all'} plus an HPD interval via \code{cint}, except \code{'fitted'}/\code{'fitted.ind'}, which so far only support \code{posterior.summary='mean'} with no interval (would need every draw's full table stored at once). \code{type='quantile'} requires \code{q} (the quantile, e.g. \code{q=.5} for the median); its point estimate is the posterior mean/median of each draw's OWN quantile (inverting each draw's cumulative-probability curve separately), not the quantile of the posterior-mean curve -- the two are close but not identical. Other types, and a \verb{fun=} that is an actual function (as opposed to the recognized strings \code{'mean'}/\code{'quantile'}, handled via \code{\link[=Mean.borm]{Mean.borm()}}/\code{\link[=Quantile.borm]{Quantile.borm()}} or directly through \code{\link[rms:Predict]{rms::Predict()}}), are not yet implemented for a \code{yde}-fitted model and raise an informative error rather than silently ignoring the Y-dependent effect, since \code{\link[=predict.blrm]{predict.blrm()}}'s own (hardcoded single-column \code{cppo}) logic cannot be reused unchanged for \code{borm()}'s matrix-valued \code{tau}.
 }
 \seealso{
 \code{\link[=predict.blrm]{predict.blrm()}}

@@ -1258,7 +1258,13 @@ bormYdeZ <- function(object, newdata) {
 ##' @noRd
 bormPredictYde <- function(object, ..., Zmatrix = TRUE, zcppo = TRUE,
                             kint, ycut, fun, funint, type,
-                            se.fit, codes, posterior.summary, cint) {
+                            se.fit, codes, posterior.summary, cint,
+                            q = NULL, method = c('interpolated', 'discrete')) {
+  # Claude Sonnet 5 2026-11-26
+  # method's own match.arg() lives here (not in predict.borm()'s formals)
+  # since only type='quantile' uses it; an un-matched default would error
+  # on every OTHER type's call even though method is irrelevant there.
+  method <- match.arg(method)
   # Claude Sonnet 5 2026-11-21          6 lines
   # 'fitted'/'fitted.ind'/'mean' ported from rms::ormPredictYde()'s own
   # bilinear factorization (Z %*% Tau %*% t(ytransmat)), generalized to
@@ -1266,7 +1272,17 @@ bormPredictYde <- function(object, ..., Zmatrix = TRUE, zcppo = TRUE,
   # had. Per the explicit modularization decision (not calling rms's
   # unexported internals across the package boundary), this is a
   # parallel implementation, not a shared call.
-  implemented <- c("lp", "x", "fitted", "fitted.ind", "mean")
+  # Claude Sonnet 5 2026-11-26
+  # 'quantile' added: per-draw analog of rms::ormPredictYde()'s own
+  # type='quantile' delta method -- here, since there is no single MLE,
+  # each posterior draw's own P curve is inverted separately (reusing
+  # bormYdeQuantile()'s existing, already-tested interpolated/discrete
+  # inversion logic, factored into bormYdeInvertP() below) and the
+  # per-draw quantile values are summarized across draws (posterior
+  # mean/median, plus an HPD interval when cint>0) -- the same posterior-
+  # summary-after-a-per-draw-loop pattern type='mean' already uses just
+  # below, not a delta method (no single MLE/Hessian exists here).
+  implemented <- c("lp", "x", "fitted", "fitted.ind", "mean", "quantile")
   if (type %nin% implemented) {
     stop(
       "type='", type, "' is not yet implemented for a borm() fit using yde/ytrans; ",
@@ -1346,7 +1362,7 @@ bormPredictYde <- function(object, ..., Zmatrix = TRUE, zcppo = TRUE,
   expandZ <- function(Zrow, ytransrow) as.vector(outer(Zrow, ytransrow))
   taunam <- bormYdeNames(colnames(Z), ytransmat, qyde, myde)
 
-  if (type %in% c("fitted", "fitted.ind", "mean")) {
+  if (type %in% c("fitted", "fitted.ind", "mean", "quantile")) {
     # Claude Sonnet 5 2026-11-21          entire block
     # All three need the Y-dependent contribution at every cutpoint
     # j=1..k, not just the one given by kint/ycut (unlike 'lp'/'x'
@@ -1397,6 +1413,60 @@ bormPredictYde <- function(object, ..., Zmatrix = TRUE, zcppo = TRUE,
       if (!cint) return(postsum)
       hpd <- apply(R, 1, HPDint, prob = cint)
       return(list(mean = postsum, lower = hpd[1, ], upper = hpd[2, ]))
+    }
+
+    if (type == "quantile") {
+      # Claude Sonnet 5 2026-11-26          entire block
+      # Per-draw analog of rms::ormYdeFittedMean()'s own type='quantile'
+      # delta method -- there is no single MLE/Hessian here, so instead
+      # each posterior draw's own n x k cumulative-probability curve is
+      # built (identical per-draw code to type='mean' just above, minus
+      # the values/dvalues weighting) and inverted to a quantile value
+      # via bormYdeInvertP() (a factored-out, verbatim port of
+      # bormYdeQuantile()'s own pre-existing interpolated/discrete
+      # inversion logic -- confirmed to agree with it exactly for a
+      # single draw/single q during verification). The resulting n x
+      # ndraws x length(q) array of per-draw quantile values is then
+      # summarized across draws (posterior mean/median, or every draw
+      # via posterior.summary='all'; an HPD interval when cint>0) -- the
+      # same pattern type='mean' uses, generalized over q. This changes
+      # what "the" point estimate means relative to the previous
+      # bormYdeQuantile() (which inverted the POSTERIOR-MEAN P curve
+      # once): it is now the posterior mean/median OF the per-draw
+      # quantiles. Confirmed by direct comparison during verification
+      # that the two are close but not identical, as expected from
+      # Jensen's inequality (inverting a cdf is a nonlinear operation);
+      # the per-draw version is the one that actually supports a
+      # posterior interval, which is the point of this change.
+      if (! length(q)) stop("q= must be given for type='quantile'")
+      values <- if (codes) 1 : length(ylevs) else as.numeric(ylevs)
+      if (any(is.na(values)))
+        stop('values of response levels must be numeric for type="quantile" and codes=FALSE')
+      pfam    <- rms::probabilityFamilies[[object$family]]
+      inverse <- eval(pfam[2])
+      nq <- length(q)
+      R  <- array(NA_real_, dim = c(n, ndraws, nq))
+      for (d in 1 : ndraws) {
+        Tau_d   <- matrix(draws[d, taunam], nrow = qyde, ncol = myde)
+        ZTau_d  <- (Z %*% Tau_d) %*% t(ytransmat_cut)              # n x k
+        lp_full <- sweep(ZTau_d, 2, draws[d, alphaname], "+") + Xbeta[, d]
+        R[, d, ] <- bormYdeInvertP(cumprob(lp_full), q, values, method, cumprob, inverse)
+      }
+      if (posterior.summary == "all") {
+        if (nq == 1) return(t(R[, , 1]))
+        return(aperm(R, c(2, 1, 3)))
+      }
+      postsum <- if (posterior.summary == "mean") apply(R, c(1, 3), mean) else apply(R, c(1, 3), median)
+      rownames(postsum) <- rownames(X)
+      if (nq == 1) postsum <- postsum[, 1]
+      if (!cint) return(postsum)
+      lower <- matrix(NA_real_, n, nq); upper <- matrix(NA_real_, n, nq)
+      for (jj in 1 : nq) {
+        hpd <- apply(R[, , jj, drop = TRUE], 1, HPDint, prob = cint)
+        lower[, jj] <- hpd[1, ]; upper[, jj] <- hpd[2, ]
+      }
+      if (nq == 1) { lower <- lower[, 1]; upper <- upper[, 1] }
+      return(list(quantile = postsum, lower = lower, upper = upper))
     }
 
     ## type %in% c('fitted', 'fitted.ind'): only posterior.summary='mean'
@@ -1893,18 +1963,20 @@ print.borm <- function(x, dec = 4, coefs = TRUE, intercepts = x$non.slopes < 10,
 # identical logic, borm's own S3 methods simply delegate to them.
 ##' Make Predictions from a `borm()` Fit
 ##'
-##' Predict method for [borm()] objects. When the fit did not use `yde`/`ytrans`, delegates entirely to [predict.blrm()], which is already link-and-model-structure-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`, with its only `ppo`/`cppo`-specific logic guarded behind fields `borm()` always sets to 0/`NULL`). When the fit did use `yde`/`ytrans`, has its own `yde`-aware implementation for `type='lp'` and `type='x'` (the two most commonly needed, and the building blocks `type='fitted'` etc. use internally); other types, and `fun=`, are not yet implemented for a `yde`-fitted model and raise an informative error rather than silently ignoring the Y-dependent effect, since [predict.blrm()]'s own (hardcoded single-column `cppo`) logic cannot be reused unchanged for `borm()`'s matrix-valued `tau`.
+##' Predict method for [borm()] objects. When the fit did not use `yde`/`ytrans`, delegates entirely to [predict.blrm()], which is already link-and-model-structure-agnostic (dispatches via `object$link`/`rms::probabilityFamilies`, with its only `ppo`/`cppo`-specific logic guarded behind fields `borm()` always sets to 0/`NULL`). When the fit did use `yde`/`ytrans`, has its own `yde`-aware implementation for `type='lp'`, `'x'`, `'fitted'`, `'fitted.ind'`, `'mean'`, and (as of 2026-11-26) `'quantile'` -- each loops once per posterior draw (there is no single MLE the way there is for [rms::orm()]'s own `yde` mechanism) and supports `posterior.summary='mean'`/`'median'`/`'all'` plus an HPD interval via `cint`, except `'fitted'`/`'fitted.ind'`, which so far only support `posterior.summary='mean'` with no interval (would need every draw's full table stored at once). `type='quantile'` requires `q` (the quantile, e.g. `q=.5` for the median); its point estimate is the posterior mean/median of each draw's OWN quantile (inverting each draw's cumulative-probability curve separately), not the quantile of the posterior-mean curve -- the two are close but not identical. Other types, and a `fun=` that is an actual function (as opposed to the recognized strings `'mean'`/`'quantile'`, handled via [rmsb::Mean.borm()]/[rmsb::Quantile.borm()] or directly through [rms::Predict()]), are not yet implemented for a `yde`-fitted model and raise an informative error rather than silently ignoring the Y-dependent effect, since [predict.blrm()]'s own (hardcoded single-column `cppo`) logic cannot be reused unchanged for `borm()`'s matrix-valued `tau`.
 ##' @param object a [borm()] fit object
 ##' @param ... passed to [predict.blrm()], or (for a `yde`-fitted model) to [rms::predictrms()]
 ##' @param kint see [predict.blrm()]
 ##' @param ycut for a `yde`-fitted model, the Y value(s) at which to evaluate the Y-dependent effect; see [blrm()]'s own `ycut` documentation under `predict.blrm`. Defaults to the fit's reference intercept's Y level, exactly as [predict.blrm()] does.
 ##' @param fun see [predict.blrm()]; not yet implemented for a `yde`-fitted model (errors if given)
 ##' @param funint see [predict.blrm()]
-##' @param type see [predict.blrm()]; for a `yde`-fitted model only `'lp'` and `'x'` are currently implemented (errors otherwise)
+##' @param type see [predict.blrm()]; for a `yde`-fitted model `'lp'`, `'x'`, `'fitted'`, `'fitted.ind'`, `'mean'`, and `'quantile'` are currently implemented (errors otherwise)
 ##' @param se.fit see [predict.blrm()]
 ##' @param codes see [predict.blrm()]
 ##' @param posterior.summary see [predict.blrm()]
 ##' @param cint see [predict.blrm()]
+##' @param q for `type='quantile'` on a `yde`-fitted model, the quantile(s) desired (e.g. `.5` for the median); may be a vector. Ignored for other types.
+##' @param method for `type='quantile'` on a `yde`-fitted model, `'interpolated'` (the default) or `'discrete'`; see [rms::Quantile.orm()]'s own identically-named argument. Ignored for other types.
 ##' @return see [predict.blrm()]
 ##' @seealso [predict.blrm()]
 ##' @author Frank Harrell
@@ -1914,25 +1986,37 @@ predict.borm <- function(object, ...,
                          kint = NULL, ycut = NULL,
                          fun = NULL, funint = TRUE,
                          type = c(
-                           "lp", "fitted", "fitted.ind", "mean", "x", "data.frame",
-                           "terms", "cterms", "ccterms", "adjto", "adjto.data.frame",
-                           "model.frame"
+                           "lp", "fitted", "fitted.ind", "mean", "quantile", "x",
+                           "data.frame", "terms", "cterms", "ccterms", "adjto",
+                           "adjto.data.frame", "model.frame"
                          ),
                          se.fit = FALSE, codes = FALSE,
-                         posterior.summary = c("mean", "median", "all"), cint = 0.95) {
+                         posterior.summary = c("mean", "median", "all"), cint = 0.95,
+                         # Claude Sonnet 5 2026-11-26
+                         # q/method: only used by type='quantile' (see
+                         # bormPredictYde()'s own match.arg(method), which
+                         # lives there rather than here since this formal's
+                         # default would otherwise force a match.arg() call
+                         # -- and hence a value -- for every OTHER type too).
+                         q = NULL, method = c('interpolated', 'discrete')) {
+  type <- match.arg(type)
   qyde <- object$qyde
   if (!length(qyde)) qyde <- 0L
   if (qyde == 0) {
+    if (type == 'quantile')
+      stop("type='quantile' is not implemented for predict.borm() on an ",
+           "ordinary (non-yde) fit -- use Quantile(object)(...) instead")
     return(predict.blrm(bormBlrmDelegate(object), ...,
       kint = kint, ycut = ycut, fun = fun, funint = funint,
-      type = match.arg(type), se.fit = se.fit, codes = codes,
+      type = type, se.fit = se.fit, codes = codes,
       posterior.summary = match.arg(posterior.summary), cint = cint
     ))
   }
   bormPredictYde(object, ...,
     kint = kint, ycut = ycut, fun = fun, funint = funint,
-    type = match.arg(type), se.fit = se.fit, codes = codes,
-    posterior.summary = match.arg(posterior.summary), cint = cint
+    type = type, se.fit = se.fit, codes = codes,
+    posterior.summary = match.arg(posterior.summary), cint = cint,
+    q = q, method = method
   )
 }
 
@@ -1967,72 +2051,90 @@ bormYdeMean <- function(object, codes = FALSE) {
   }
 }
 
+##' Invert a Cumulative-Probability Curve to Quantile Values
+##'
+##' Internal helper, factored out of what was originally `bormYdeQuantile()`'s
+##' own closure body (the `method='interpolated'`/`'discrete'` logic, a port
+##' of `rms::Quantile.orm()`'s own, is unchanged here -- only pulled out so
+##' `bormPredictYde()`'s new `type='quantile'` per-draw loop can call it once
+##' per posterior draw instead of once on a single already-averaged `P`).
+##' `q` may be a vector; the loop over `q` is outside the (cheap, since it
+##' does not depend on `q`) per-row interpolation setup, since the expensive
+##' part of a single call -- building `P` itself -- does not depend on how
+##' many quantiles are requested.
+##' @param P an n x k matrix of cumulative probabilities `P(Y>=level[j+1])`,
+##'   from a single posterior draw or a posterior-mean/-median curve
+##' @param q vector of quantiles (e.g. `.5` for the median)
+##' @param values numeric response levels, length k+1
+##' @param method `'interpolated'` or `'discrete'`
+##' @param cumprob the family's CDF, from `rms::probabilityFamilies`
+##' @param inverse the family's inverse CDF, from `rms::probabilityFamilies`
+##' @return an n x length(q) matrix of quantile values
+##' @author Frank Harrell
+##' @noRd
+bormYdeInvertP <- function(P, q, values, method, cumprob, inverse) {
+  if (! is.matrix(P)) P <- matrix(P, nrow = 1)
+  n  <- nrow(P)
+  ns <- ncol(P)
+  nq <- length(q)
+  out <- matrix(NA_real_, n, nq)
+  if (method == 'interpolated') {
+    cp <- cbind(P, 0)
+    m.yvals <- matrix(NA, nrow = n, ncol = ns + 2)
+    for (j in 1 : n) {
+      ws <- c(0, (cp[j, -ns-1] - cp[j, 1]) / (cp[j, ns] - cp[j, 1]), 1)
+      m.yvals[j,] <- (1 - ws) * c(values[1], values) + ws * c(values, values[ns + 1])
+    }
+    for (qi in 1 : nq)
+      out[, qi] <- sapply(1 : n,
+                 function(i) approx(c(1, cp[i,]), m.yvals[i,],
+                                    xout = cumprob(inverse(1 - q[qi])), rule = 2)$y)
+  } else {
+    m.cdf <- cbind(1 - P, 1)
+    for (qi in 1 : nq) {
+      id <- apply(m.cdf, 1, FUN = function(x) {min(which(x >= q[qi]))[1]})
+      out[, qi] <- values[id]
+    }
+  }
+  out
+}
+
 ##' `Quantile()` Closure for a Y-Dependent-Effect `borm()` Fit
 ##'
-##' Internal helper for [Quantile.borm()] when `qyde > 0`, paralleling
-##' `bormYdeMean()` and `rms::ormYdeQuantile()`. Requires `newdata` and
-##' inverts `P <- predict(object, newdata, type='fitted', ...)` (only
-##' `posterior.summary='mean'` is available for `type='fitted'` on a
-##' `yde` fit -- see `bormPredictYde()`) via the same `approx()`-based
-##' logic `rms::Quantile.orm()`'s own (and `ormYdeQuantile()`'s)
-##' `method='discrete'`/`'interpolated'` use, ported unchanged apart from
-##' sourcing `P` from `predict(type='fitted')` instead of `cumprob(lb)`
-##' (`P` being a posterior mean across draws rather than a single MLE
-##' evaluation doesn't affect either method's math: a posterior mean of
-##' per-draw monotone-in-Y probability vectors is itself monotone, which
-##' is all `'interpolated'`'s grid construction relies on -- confirmed
-##' numerically, not just argued, in the verification for this function).
+##' Internal helper for [Quantile.borm()] when `qyde > 0`, the `rmsb`
+##' parallel of `rms::ormYdeQuantile()`. Requires `newdata` and delegates to
+##' `predict(object, newdata, type='quantile', ...)`, which does the real
+##' per-posterior-draw work (see `bormPredictYde()`) -- the same division of
+##' labor `bormYdeMean()` already uses for `type='mean'`.
+##'
+##' This changed as of 2026-11-26: the point estimate (`cint=0`,
+##' `posterior.summary='mean'`, the default) used to be the quantile of the
+##' POSTERIOR-MEAN `P` curve (inverted once); it is now the posterior mean
+##' of each draw's OWN quantile (inverted once per draw, then summarized) --
+##' the change needed to support a real posterior interval at all, since a
+##' single already-averaged curve carries no information about
+##' across-draw variability. The two are close but not numerically
+##' identical (confirmed directly), as expected from Jensen's inequality:
+##' inverting a cdf is a nonlinear operation, so the mean of the inverses
+##' need not equal the inverse of the mean.
 ##' @param object a `yde`-fitted [borm()] object
 ##' @param codes see [Quantile.blrm()]'s own `codes` argument
 ##' @author Frank Harrell
 ##' @noRd
 bormYdeQuantile <- function(object, codes = FALSE) {
-  function(q = .5, newdata = NULL, posterior.summary = 'mean',
-           method = c('interpolated', 'discrete'), ...) {
+  function(q = .5, newdata = NULL,
+           posterior.summary = c('mean', 'median', 'all'),
+           method = c('interpolated', 'discrete'), cint = 0, ...) {
     if (! length(newdata))
       stop("Quantile() for a borm() fit using yde/ytrans must be called with ",
            "newdata (the original covariate data frame) -- a bare linear ",
            "predictor cannot represent a Y-dependent effect, which varies ",
            "by level of Y. Call this function as f(newdata=...), or use ",
-           "predict(object, newdata, type='fitted') directly.")
-    if (! identical(posterior.summary, 'mean'))
-      stop("Quantile() for a borm() fit using yde/ytrans only supports ",
-           "posterior.summary='mean'")
+           "predict(object, newdata, type='quantile') directly.")
+    posterior.summary <- match.arg(posterior.summary)
     method <- match.arg(method)
-    values <- if (codes) 1 : length(object$yunique) else as.numeric(object$yunique)
-    if (any(is.na(values)))
-      stop('values of response levels must be numeric for codes=FALSE')
-    ns <- length(values) - 1L
-    # Claude Sonnet 5 2026-11-22
-    # cint=0 explicitly: predict.borm()'s own cint formal defaults to
-    # 0.95, which would otherwise trigger bormPredictYde()'s "cint is
-    # not yet supported for type='fitted'" warning on every call here,
-    # even though nothing about this closure ever asked for an interval.
-    P <- predict(object, newdata, type = 'fitted', codes = codes,
-                 posterior.summary = 'mean', cint = 0)
-    if (! is.matrix(P)) P <- matrix(P, nrow = 1)
-    n <- nrow(P)
-
-    if (method == 'interpolated') {
-      pfam    <- rms::probabilityFamilies[[object$family]]
-      cumprob <- eval(pfam[1])
-      inverse <- eval(pfam[2])
-      m.yvals <- matrix(NA, nrow = n, ncol = ns + 2)
-      cp <- cbind(P, 0)
-      for (j in 1 : n) {
-        ws <- c(0, (cp[j, -ns-1] - cp[j, 1]) / (cp[j, ns] - cp[j, 1]), 1)
-        m.yvals[j,] <- (1 - ws) * c(values[1], values) + ws * c(values, values[ns + 1])
-      }
-      z <- sapply(1 : n,
-                 function(i) approx(c(1, cp[i,]), m.yvals[i,],
-                                    xout = cumprob(inverse(1 - q)), rule = 2)$y)
-    } else {
-      m.cdf <- cbind(1 - P, 1)
-      id <- apply(m.cdf, 1, FUN = function(x) {min(which(x >= q))[1]})
-      z  <- values[id]
-    }
-    names(z) <- rownames(P)
-    z
+    predict(object, newdata, type = 'quantile', q = q, codes = codes,
+            posterior.summary = posterior.summary, method = method, cint = cint)
   }
 }
 
