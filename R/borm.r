@@ -1,6 +1,6 @@
 ##' Bayesian Ordinal Regression
 ##'
-##' Uses `rstan` with pre-compiled Stan code, or `cmdstan`, to get posterior draws of parameters from a Bayesian ordinal (or binary) cumulative probability regression model, with a choice of 5 link families -- `borm()` is to [blrm()] as [rms::orm()] is to [rms::lrm()]: it generalizes the single (logistic) link that `blrm()` implements to all of the link families `orm()` supports, and is designed, like `orm()`, to scale to a very large number of distinct Y values.  Unlike `blrm()`, `borm()` does not implement the partial proportional odds model (`ppo`/`cppo`) itself; `blrm()` remains the function to use for that. Instead `borm()` implements a more general Y-dependent effect mechanism that plays `cppo`'s role, via two new arguments: `yde` (paralleling `ppo`) identifies which predictors get a Y-dependent effect, and `ytrans` (paralleling `cppo`, but returning a matrix of one or more columns instead of a single score) specifies the shape(s) of that dependency. A single-column `ytrans` with a single `yde` predictor reduces mathematically to `blrm()`'s own `cppo` mechanism.
+##' Uses `rstan` with pre-compiled Stan code, or `cmdstan`, to get posterior draws of parameters from a Bayesian ordinal (or binary) cumulative probability regression model, with a choice of 5 link families -- `borm()` is to [blrm()] as [rms::orm()] is to [rms::lrm()]: it generalizes the single (logistic) link that `blrm()` implements to all of the link families `orm()` supports, and is designed, like `orm()`, to scale to a very large number of distinct Y values.  `borm()` implements a more general Y-dependent effect mechanism that plays `cppo`'s role, via two new arguments: `yde` (paralleling `ppo`) identifies which predictors get a Y-dependent effect, and `ytrans` (paralleling `cppo`, but returning a matrix of one or more columns instead of a single score) specifies the shape(s) of that dependency. A single-column `ytrans` with a single `yde` predictor reduces mathematically to `blrm()`'s own `cppo` mechanism.
 ##'
 ##' Y-dependent effects of selected predictors can also be included in the model by the user providing the `yde` and `ytrans` arguments. For a logit link this implements the constrained partial proportional odds model of Peterson and Harrell (1990). For a log-log link this represents time-dependent covariate effects in a Cox proportional hazards model when Y=time.
 ##'
@@ -1031,6 +1031,64 @@ bormYdeColLab <- function(ytransmat, myde) {
 ##' @noRd
 bormYdeNames <- function(Zcolnames, ytransmat, qyde, myde) {
   paste(rep(Zcolnames, myde), rep(bormYdeColLab(ytransmat, myde), each = qyde), sep = " * ")
+}
+
+##' borm() Analog of tauFetch() for a yde-Fitted Model
+##'
+##' Internal helper for [tauFetch()] when `fit` is a yde-fitted [borm()]
+##' object -- `borm()` has no `cppo`/`pppo`/`tauInfo` fields at all (its own
+##' non-PO/Y-dependent-effect mechanism is `qyde`/`ytrans`/`tau`, a `qyde x
+##' myde` matrix, not `blrm()`'s single vector), so this parallels (not
+##' calls) `blrm()`'s own constrained-PPO branch: for each posterior draw,
+##' the `qyde x myde` `Tau` matrix is weighted by `ytransmat` at the
+##' requested intercept's own Y level, giving one weighted-tau value per
+##' `yde` predictor per draw -- the `borm()` analog of `blrm()`'s `cppo(y) *
+##' tau`. `borm()` has no unconstrained-PPO analog (`yde`/`ytrans` is always
+##' this one, "constrained-style" per-predictor score, however many
+##' `ytrans` columns `myde` has), so only one branch is needed here, unlike
+##' `tauFetch()`'s own two (constrained vs. unconstrained PPO) for `blrm()`.
+##' Requires `x=TRUE` to have been given to [borm()] (which also stores
+##' `z`, the `yde` design matrix), the same requirement [bormStats()] and
+##' `bormPredictYde()` already have.
+##' @param fit a yde-fitted [borm()] object
+##' @param intercept integer specifying which intercept to fetch (the Y
+##'   level used for weighting is `fit$yunique[intercept+1]`)
+##' @param what `'tau'`, `'nontau'`, or `'both'`
+##' @return matrix with number of rows equal to the number of posterior draws
+##' @author Frank Harrell
+##' @noRd
+bormTauFetch <- function(fit, intercept, what = c('tau', 'nontau', 'both')) {
+  what  <- match.arg(what)
+  draws <- fit$draws
+  nd    <- nrow(draws)
+  nints <- fit$non.slopes
+  int   <- intercept
+  if(int > nints) stop('intercept is too large')
+  if(! length(fit$z))
+    stop("tauFetch() for a borm() fit using yde/ytrans requires the fit ",
+         "to have been made with x=TRUE (which also stores z, the yde ",
+         "design matrix)")
+  qyde   <- fit$qyde
+  ytrans <- if(is.function(fit$ytrans)) fit$ytrans else eval(parse(text = fit$ytrans))
+  ytransmat <- ytrans(fit$yunique)
+  if(! is.matrix(ytransmat)) ytransmat <- matrix(ytransmat, ncol = 1)
+  myde   <- ncol(ytransmat)
+  taunam <- bormYdeNames(colnames(fit$z), ytransmat, qyde, myde)
+  cn     <- colnames(draws)
+  ## Keep only the intercept of interest, mirroring tauFetch()'s own
+  ## cn <- c(cn[int], cn[-(1:nints)]) + nontau <- setdiff(cn, info$name)
+  nontaunam <- c(cn[int], setdiff(cn[-(1 : nints)], taunam))
+  if(what == 'nontau') return(draws[, nontaunam, drop = FALSE])
+  # Claude Sonnet 5 2026-11-27
+  # int is a 1-based alpha index (1..nints); ytransmat row int+1
+  # corresponds to it (row 1 is the baseline Y level, matching
+  # ormYdeFittedMean()/bormPredictYde()'s own j+1 shift convention).
+  ytr  <- ytransmat[int + 1, ]
+  wtau <- matrix(NA_real_, nd, qyde)
+  for(i in 1 : nd) wtau[i, ] <- matrix(draws[i, taunam], qyde, myde) %*% ytr
+  colnames(wtau) <- colnames(fit$z)
+  if(what == 'tau') return(wtau)
+  cbind(draws[, nontaunam, drop = FALSE], wtau)
 }
 
 ##' Combined beta+tau Contrast Row Builder for borm()'s npcontrast

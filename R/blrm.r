@@ -1832,8 +1832,8 @@ ExProb.blrm <- function(object,
 
 ##' Fetch Partial Proportional Odds Parameters
 ##'
-##' Fetches matrix of posterior draws for partial proportional odds parameters (taus) for a given intercept.  Can also form a matrix containing both regular parameters and taus, or for just non-taus.  For the constrained partial proportional odds model the function returns the appropriate `cppo` function value multiplied by tau (tau being a vector in this case and not a matrix).
-##' @param fit an object created by [blrm()]
+##' Fetches matrix of posterior draws for partial proportional odds parameters (taus) for a given intercept.  Can also form a matrix containing both regular parameters and taus, or for just non-taus.  For the constrained partial proportional odds model the function returns the appropriate `cppo` function value multiplied by tau (tau being a vector in this case and not a matrix).  For a yde-fitted [borm()] object (which has no `cppo`/`pppo`/`tauInfo` fields at all), delegates to the internal `bormTauFetch()`, the analogous computation for `borm()`'s own `yde`/`ytrans`/tau mechanism.
+##' @param fit an object created by [blrm()] or [borm()]
 ##' @param intercept integer specifying which intercept to fetch
 ##' @param what specifies the result to return
 ##' @return matrix with number of raws equal to the numnber of original draws
@@ -1841,6 +1841,12 @@ ExProb.blrm <- function(object,
 ##' @export
 tauFetch <- function(fit, intercept, what = c("tau", "nontau", "both")) {
   what <- match.arg(what)
+  # Claude Sonnet 5 2026-11-27          2 lines
+  # Generalized to also handle a yde-fitted borm() object -- see
+  # bormTauFetch()'s own doc comment for why this needs a separate
+  # (not shared) computation rather than a tweak to the code below.
+  if(inherits(fit, "borm") && length(fit$qyde) && fit$qyde > 0)
+    return(bormTauFetch(fit, intercept, what))
   f <- fit[c("tauInfo", "draws", "non.slopes", "cppo", "ylevels")]
   info <- f$tauInfo
   draws <- f$draws
