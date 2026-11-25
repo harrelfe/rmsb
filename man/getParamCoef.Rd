@@ -15,7 +15,7 @@ getParamCoef(
 
 \item{posterior.summary}{which summary statistic (Bayesian point estimate) to fetch}
 
-\item{what}{specifies which coefficients to include.  Default is all.  Specify \code{what="betas"} to include only intercepts and betas if the model is a partial proportional odds model (i.e.,, exclude the tau parameters).  Specify \code{what="taus"} to include only the tau parameters.}
+\item{what}{specifies which coefficients to include.  Default is all.  Specify \code{what="betas"} to include only intercepts and betas if the model has partial proportional odds (\code{\link[=blrm]{blrm()}}'s \code{pppo}) or Y-dependent predictor effects (\code{\link[=borm]{borm()}}'s \code{yde}/\code{ytrans}) parameters (i.e., exclude the tau parameters).  Specify \code{what="taus"} to include only the tau parameters.}
 }
 \value{
 vector of regression coefficients

@@ -7,7 +7,7 @@
 tauFetch(fit, intercept, what = c("tau", "nontau", "both"))
 }
 \arguments{
-\item{fit}{an object created by \code{\link[=blrm]{blrm()}}}
+\item{fit}{an object created by \code{\link[=blrm]{blrm()}} or \code{\link[=borm]{borm()}}}
 
 \item{intercept}{integer specifying which intercept to fetch}
 
@@ -17,7 +17,7 @@ tauFetch(fit, intercept, what = c("tau", "nontau", "both"))
 matrix with number of raws equal to the numnber of original draws
 }
 \description{
-Fetches matrix of posterior draws for partial proportional odds parameters (taus) for a given intercept.  Can also form a matrix containing both regular parameters and taus, or for just non-taus.  For the constrained partial proportional odds model the function returns the appropriate \code{cppo} function value multiplied by tau (tau being a vector in this case and not a matrix).
+Fetches matrix of posterior draws for partial proportional odds parameters (taus) for a given intercept.  Can also form a matrix containing both regular parameters and taus, or for just non-taus.  For the constrained partial proportional odds model the function returns the appropriate \code{cppo} function value multiplied by tau (tau being a vector in this case and not a matrix).  For a yde-fitted \code{\link[=borm]{borm()}} object (which has no \code{cppo}/\code{pppo}/\code{tauInfo} fields at all), delegates to the internal \code{bormTauFetch()}, the analogous computation for \code{borm()}'s own \code{yde}/\code{ytrans}/tau mechanism.
 }
 \author{
 Frank Harrell

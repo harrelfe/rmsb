@@ -590,7 +590,7 @@ plot.PostF <- function(x, ..., cint=0.95, label=NULL,
 ##' Retrieves posterior mean, median, or mode (if available)
 ##' @param fit a Bayesian model fit from `rmsb`
 ##' @param posterior.summary which summary statistic (Bayesian point estimate) to fetch
-##' @param what specifies which coefficients to include.  Default is all.  Specify `what="betas"` to include only intercepts and betas if the model is a partial proportional odds model (i.e.,, exclude the tau parameters).  Specify `what="taus"` to include only the tau parameters.
+##' @param what specifies which coefficients to include.  Default is all.  Specify `what="betas"` to include only intercepts and betas if the model has partial proportional odds ([blrm()]'s `pppo`) or Y-dependent predictor effects ([borm()]'s `yde`/`ytrans`) parameters (i.e., exclude the tau parameters).  Specify `what="taus"` to include only the tau parameters.
 ##' @return vector of regression coefficients
 ##' @author Frank Harrell
 ##' @md
@@ -602,18 +602,58 @@ getParamCoef <- function(fit, posterior.summary=c('mean', 'median', 'mode'),
   param <- fit$param
   if(what == 'both') i <- TRUE
   else {
-    pppo <- fit$pppo
-    if(! length(pppo)) pppo <- 0
-    if(pppo == 0 && what == 'taus')
-      stop('taus requested but model is not a partial prop. odds model')
+    # Claude Sonnet 5 2026-11-27          entire block
+    # Generalized to also handle a yde-fitted borm() object, whose
+    # non-PO/Y-dependent-effect parameter count is qyde*myde (tau's
+    # flattened dimensions), not blrm()'s own pppo field -- borm() has
+    # no pppo at all. myde is never stored on a borm() fit (matches
+    # rms::orm()'s own convention of always recomputing it), so it is
+    # rebuilt here the same way bormPredictYde()/bormStats() already
+    # do: evaluate ytrans (already a function on a file= cache hit,
+    # otherwise deparsed text) on yunique, wrapping a plain-vector
+    # result into a one-column matrix. Confirmed directly that
+    # fit$param's own columns follow the same [intercepts, betas, taus]
+    # layout for both model types (both are built the identical way,
+    # rbind(mean=colMeans(draws), ...), from draws <- cbind(alphas,
+    # betas, taus)), so the existing p-ntau/ntau+1 arithmetic below
+    # needed no change once ntau itself is computed correctly for
+    # either type.
+    ntau <- if(inherits(fit, 'borm') && length(fit$qyde) && fit$qyde > 0) {
+      ytrans <- if(is.function(fit$ytrans)) fit$ytrans
+                else eval(parse(text=fit$ytrans))
+      ytransmat <- ytrans(fit$yunique)
+      if(! is.matrix(ytransmat)) ytransmat <- matrix(ytransmat, ncol=1)
+      fit$qyde * ncol(ytransmat)
+    } else {
+      pppo <- fit$pppo
+      if(! length(pppo)) 0 else pppo
+    }
+    if(ntau == 0 && what == 'taus')
+      stop('taus requested but this model has no tau (partial proportional ',
+           'odds / Y-dependent-effect) parameters')
     p <- ncol(param)
     i <- switch(what,
-                betas = 1 : (p - pppo),
-                taus  = (p - pppo + 1) : p)
+                betas = 1 : (p - ntau),
+                taus  = (p - ntau + 1) : p)
     }
   if(posterior.summary == 'mode' && 'mode' %nin% rownames(param))
     stop('posterior mode not included in model fit')
-  param[posterior.summary, i]
+  # Claude Sonnet 5 2026-11-27
+  # drop=FALSE + a separate names() assignment, not the bare
+  # param[posterior.summary, i] this used to end with: a plain single-
+  # row/single-column matrix subscript silently drops names in base R
+  # once BOTH dimensions collapse to length 1 (confirmed directly:
+  # m["mean","b"] has no name, m["mean",c("b","c")] does) -- a borm()
+  # fit with a single yde predictor and a single-column ytrans
+  # (qyde=myde=1, the common case) has exactly one tau parameter, so
+  # what='taus' silently lost its name there; this is a general,
+  # pre-existing R indexing gotcha, not specific to borm, but this
+  # generalization is what exposed it.
+  r  <- param[posterior.summary, i, drop=FALSE]
+  cn <- colnames(r)
+  r  <- as.vector(r)
+  names(r) <- cn
+  r
 }
 
 
